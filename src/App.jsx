@@ -5,6 +5,8 @@ import BottomNav from './components/BottomNav'
 // Client
 import ClientLogin from './pages/client/ClientLogin'
 import ClientRegister from './pages/client/ClientRegister'
+import MasterLink from './pages/client/MasterLink'
+import InstallPrompt from './components/InstallPrompt'
 import Home from './pages/client/Home'
 import SalonPage from './pages/client/SalonPage'
 import MasterPage from './pages/client/MasterPage'
@@ -38,6 +40,7 @@ function Shell() {
         {/* Клиентское приложение */}
         <Route path="/login" element={<ClientLogin />} />
         <Route path="/register" element={<ClientRegister />} />
+        <Route path="/m/:id" element={<MasterLink />} />
         <Route path="/" element={<ClientGuard><Home /></ClientGuard>} />
         <Route path="/salon/:id" element={<ClientGuard><SalonPage /></ClientGuard>} />
         <Route path="/master/:id" element={<ClientGuard><MasterPage /></ClientGuard>} />
@@ -54,6 +57,7 @@ function Shell() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       {!isAuthPage && <BottomNav />}
+      {!isAuthPage && !path.startsWith('/pro') && <InstallPrompt />}
     </>
   )
 }

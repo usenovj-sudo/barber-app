@@ -13,7 +13,9 @@ export default function ClientRegister() {
     setError('')
     const res = clientAuth.register(form)
     if (res.error) return setError(res.error)
-    navigate('/')
+    const redirect = sessionStorage.getItem('redirect_after_auth')
+    sessionStorage.removeItem('redirect_after_auth')
+    navigate(redirect || '/')
   }
 
   return (

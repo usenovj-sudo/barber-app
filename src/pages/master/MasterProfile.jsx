@@ -3,7 +3,7 @@ import { masterAuth, getMasterById, getServicesForMaster } from '../../lib/auth'
 import PageHeader from '../../components/PageHeader'
 import LevelBadge from '../../components/LevelBadge'
 import Stars from '../../components/Stars'
-import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight, Share2, Copy, Check } from 'lucide-react'
 
 export default function MasterProfile() {
   const user = masterAuth.current()
@@ -12,6 +12,28 @@ export default function MasterProfile() {
 
   const KEY = 'barber_services_' + masterId
   const [services, setServices] = useState(() => getServicesForMaster(masterId))
+  const [copied, setCopied] = useState(false)
+
+  const shareUrl = `${window.location.origin}/m/${masterId}`
+  const shareText = `Записывайся ко мне на стрижку 💈\n${shareUrl}`
+
+  async function handleShare() {
+    if (navigator.share) {
+      try { await navigator.share({ title: master?.name, text: 'Записывайся ко мне на стрижку 💈', url: shareUrl }) } catch {}
+    } else {
+      window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank')
+    }
+  }
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      alert(shareUrl)
+    }
+  }
   const [modal, setModal] = useState(null) // null | {mode: 'add'|'edit', service?}
   const [form, setForm] = useState({ name: '', category: 'adult', price: '', duration: '30', active: true })
 
@@ -79,6 +101,25 @@ export default function MasterProfile() {
           <p className="text-xs text-gray-500 mt-1">
             {master?.accepts_children ? '👶 Принимает детей' : '🚫 Только взрослые'}
           </p>
+        </div>
+      </div>
+
+      {/* Личная ссылка для клиентов */}
+      <div className="px-4 mb-5">
+        <div className="bg-[#0f3460] rounded-2xl p-4 text-white">
+          <p className="font-bold text-sm mb-1">🔗 Ваша ссылка для записи</p>
+          <p className="text-xs text-blue-200 mb-3">Отправьте клиентам — они откроют запись прямо к вам</p>
+          <div className="bg-white/10 rounded-xl px-3 py-2 text-xs break-all mb-3">{shareUrl}</div>
+          <div className="flex gap-2">
+            <button onClick={handleShare}
+              className="flex-1 bg-white text-[#0f3460] rounded-xl py-2.5 font-bold text-sm flex items-center justify-center gap-1.5">
+              <Share2 size={16} /> Поделиться
+            </button>
+            <button onClick={handleCopy}
+              className="bg-white/15 text-white rounded-xl px-4 py-2.5 font-semibold text-sm flex items-center justify-center gap-1.5">
+              {copied ? <><Check size={16} /> Скопировано</> : <><Copy size={16} /> Копировать</>}
+            </button>
+          </div>
         </div>
       </div>
 
