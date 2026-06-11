@@ -110,7 +110,7 @@ export default function MasterSchedule() {
             {todayBookings.length} записей · {todayBookings.reduce((a,b) => {
               const s = myServices.find(s => s.id === b.service_id)
               return a + (s?.price || 0)
-            }, 0)} ₽
+            }, 0)} ₸
           </p>
         </div>
         {isDayBlocked ? (
@@ -186,7 +186,7 @@ export default function MasterSchedule() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-gray-900 truncate">{b.client_name}</p>
-                    <p className="text-xs text-gray-500">{service?.name} · {service?.price} ₽</p>
+                    <p className="text-xs text-gray-500">{service?.name} · {service?.price} ₸</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`text-xs px-2 py-1 rounded-full ${st.color}`}>{st.label}</span>

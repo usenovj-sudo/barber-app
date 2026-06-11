@@ -59,7 +59,7 @@ export default function MyBookings() {
         </div>
 
         {b.price && (
-          <p className="text-sm mt-2 font-semibold text-[#1a1a2e]">{b.price} ₽</p>
+          <p className="text-sm mt-2 font-semibold text-[#1a1a2e]">{b.price} ₸</p>
         )}
 
         {b.comment && (

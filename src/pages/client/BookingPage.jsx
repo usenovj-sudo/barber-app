@@ -82,7 +82,7 @@ export default function BookingPage() {
           <p className="text-sm"><span className="text-gray-500">Дата:</span> <span className="font-semibold">{formatDate(selectedDate)}</span></p>
           <p className="text-sm"><span className="text-gray-500">Время:</span> <span className="font-semibold">{selectedSlot} – {addMinutes(selectedSlot, service.duration)}</span></p>
           <p className="text-sm"><span className="text-gray-500">Услуга:</span> <span className="font-semibold">{service.name}</span></p>
-          <p className="text-sm"><span className="text-gray-500">Стоимость:</span> <span className="font-bold text-[#1a1a2e]">{service.price} ₽</span></p>
+          <p className="text-sm"><span className="text-gray-500">Стоимость:</span> <span className="font-bold text-[#1a1a2e]">{service.price} ₸</span></p>
         </div>
         <button onClick={() => navigate('/bookings')}
           className="w-full bg-[#1a1a2e] text-white rounded-2xl py-4 font-bold">
@@ -126,7 +126,7 @@ export default function BookingPage() {
                     {s.category === 'child' ? '👶 детская' : '👤 взрослая'} · {s.duration} мин
                   </p>
                 </div>
-                <span className="font-bold text-[#1a1a2e] text-lg">{s.price} ₽</span>
+                <span className="font-bold text-[#1a1a2e] text-lg">{s.price} ₸</span>
               </div>
             ))}
           </div>
@@ -215,7 +215,7 @@ export default function BookingPage() {
             </div>
             <div className="flex justify-between pt-2 border-t border-gray-200">
               <span className="text-sm font-bold">Итого</span>
-              <span className="font-bold text-[#1a1a2e] text-lg">{service?.price} ₽</span>
+              <span className="font-bold text-[#1a1a2e] text-lg">{service?.price} ₸</span>
             </div>
           </div>
 

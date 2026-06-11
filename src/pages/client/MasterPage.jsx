@@ -39,7 +39,7 @@ export default function MasterPage() {
             <span className="text-sm font-semibold">{master.rating}</span>
             <span className="text-xs text-gray-400">({master.reviews_count} отзывов)</span>
           </div>
-          <p className="text-sm font-semibold text-[#1a1a2e] mt-1">от {minPrice} ₽</p>
+          <p className="text-sm font-semibold text-[#1a1a2e] mt-1">от {minPrice} ₸</p>
         </div>
       </div>
 
@@ -61,7 +61,7 @@ export default function MasterPage() {
                   &nbsp;· {s.duration} мин
                 </p>
               </div>
-              <span className="font-bold text-[#1a1a2e]">{s.price} ₽</span>
+              <span className="font-bold text-[#1a1a2e]">{s.price} ₸</span>
             </div>
           ))}
         </div>

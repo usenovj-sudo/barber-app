@@ -141,7 +141,7 @@ export default function MasterProfile() {
                 <p className="font-semibold text-sm text-gray-900">{s.name}</p>
                 <p className="text-xs text-gray-400">
                   {s.category === 'child' ? '👶' : s.category === 'adult' ? '👤' : '👤👶'}
-                  {' '}{s.duration} мин · <span className="font-semibold text-[#1a1a2e]">{s.price} ₽</span>
+                  {' '}{s.duration} мин · <span className="font-semibold text-[#1a1a2e]">{s.price} ₸</span>
                 </p>
               </div>
               <div className="flex items-center gap-1">
@@ -190,7 +190,7 @@ export default function MasterProfile() {
               </div>
               <div className="flex gap-3">
                 <div className="flex-1">
-                  <label className="text-sm font-semibold text-gray-700 mb-1 block">Цена (₽) *</label>
+                  <label className="text-sm font-semibold text-gray-700 mb-1 block">Цена (₸) *</label>
                   <input value={form.price} onChange={e => setForm({...form, price: e.target.value})}
                     type="number" placeholder="500"
                     className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#1a1a2e]" />
