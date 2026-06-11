@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { store } from '../../lib/store'
-import { MOCK_MASTERS, MOCK_SERVICES } from '../../lib/mockData'
+import { getMasterById, getServicesForMaster, clientAuth } from '../../lib/auth'
 import { formatDate } from '../../lib/timeSlots'
 import PageHeader from '../../components/PageHeader'
 import { Calendar, X, ChevronRight } from 'lucide-react'
@@ -16,7 +16,7 @@ const STATUS_LABELS = {
 export default function MyBookings() {
   const navigate = useNavigate()
   const [refresh, setRefresh] = useState(0)
-  const user = store.getUser()
+  const user = clientAuth.current()
 
   const allBookings = store.getBookings()
     .filter(b => !user || b.client_phone === user.phone)
@@ -33,8 +33,8 @@ export default function MyBookings() {
   }
 
   function BookingCard({ b }) {
-    const master = MOCK_MASTERS.find(m => m.id === b.master_id)
-    const service = MOCK_SERVICES.find(s => s.id === b.service_id)
+    const master = getMasterById(b.master_id)
+    const service = getServicesForMaster(b.master_id).find(s => s.id === b.service_id)
     const st = STATUS_LABELS[b.status] || STATUS_LABELS.pending
     const isPast = b.status === 'cancelled' || b.status === 'completed'
     const now = new Date().toISOString().slice(0,16).replace('T','')

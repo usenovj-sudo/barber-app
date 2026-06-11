@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { MOCK_MASTERS, MOCK_SERVICES } from '../../lib/mockData'
+import { getMasterById, getServicesForMaster, clientAuth } from '../../lib/auth'
 import { store } from '../../lib/store'
 import { generateSlots, getSlotStatus, addMinutes, formatDate, getNext14Days } from '../../lib/timeSlots'
 import PageHeader from '../../components/PageHeader'
@@ -12,10 +12,10 @@ const MONTHS_RU = ['янв','фев','мар','апр','май','июн','июл
 export default function BookingPage() {
   const { masterId } = useParams()
   const navigate = useNavigate()
-  const master = MOCK_MASTERS.find(m => m.id === masterId)
-  const services = MOCK_SERVICES.filter(s => s.master_id === masterId && s.active)
+  const master = getMasterById(masterId)
+  const services = getServicesForMaster(masterId).filter(s => s.active)
 
-  const user = store.getUser()
+  const user = clientAuth.current()
   const days = getNext14Days()
   const slots = generateSlots()
 

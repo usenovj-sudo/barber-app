@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapPin, Clock, Phone } from 'lucide-react'
-import { MOCK_SALONS, MOCK_MASTERS } from '../../lib/mockData'
+import { MOCK_SALONS } from '../../lib/mockData'
+import { getAllMasters } from '../../lib/auth'
 import PageHeader from '../../components/PageHeader'
 import Stars from '../../components/Stars'
 import LevelBadge from '../../components/LevelBadge'
@@ -9,7 +10,7 @@ export default function SalonPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const salon = MOCK_SALONS.find(s => s.id === id)
-  const masters = MOCK_MASTERS.filter(m => m.salon_id === id)
+  const masters = getAllMasters().filter(m => m.salon_id === id)
 
   if (!salon) return <div className="p-4">Не найдено</div>
 

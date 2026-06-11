@@ -1,22 +1,17 @@
 import { useState } from 'react'
-import { store } from '../../lib/store'
-import { MOCK_MASTERS, MOCK_SERVICES } from '../../lib/mockData'
+import { masterAuth, getMasterById, getServicesForMaster } from '../../lib/auth'
 import PageHeader from '../../components/PageHeader'
 import LevelBadge from '../../components/LevelBadge'
 import Stars from '../../components/Stars'
 import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight } from 'lucide-react'
 
 export default function MasterProfile() {
-  const user = store.getUser()
+  const user = masterAuth.current()
   const masterId = user?.master_id || 'm1'
-  const master = MOCK_MASTERS.find(m => m.id === masterId)
+  const master = getMasterById(masterId)
 
   const KEY = 'barber_services_' + masterId
-  const initServices = () => {
-    const saved = localStorage.getItem(KEY)
-    return saved ? JSON.parse(saved) : MOCK_SERVICES.filter(s => s.master_id === masterId)
-  }
-  const [services, setServices] = useState(initServices)
+  const [services, setServices] = useState(() => getServicesForMaster(masterId))
   const [modal, setModal] = useState(null) // null | {mode: 'add'|'edit', service?}
   const [form, setForm] = useState({ name: '', category: 'adult', price: '', duration: '30', active: true })
 
@@ -61,8 +56,8 @@ export default function MasterProfile() {
   }
 
   function handleLogout() {
-    store.clearUser()
-    window.location.href = '/'
+    masterAuth.logout()
+    window.location.href = '/pro/login'
   }
 
   return (

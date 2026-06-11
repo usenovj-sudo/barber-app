@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { store } from '../../lib/store'
-import { MOCK_MASTERS, MOCK_SERVICES } from '../../lib/mockData'
+import { masterAuth, getMasterById, getServicesForMaster } from '../../lib/auth'
 import { generateSlots, getSlotStatus, formatDate, getNext14Days, isoDate, addMinutes } from '../../lib/timeSlots'
 import { Lock, Unlock, Phone, ChevronDown, ChevronUp } from 'lucide-react'
 
@@ -15,9 +15,10 @@ const STATUS_LABELS = {
 }
 
 export default function MasterSchedule() {
-  const user = store.getUser()
+  const user = masterAuth.current()
   const masterId = user?.master_id || 'm1'
-  const master = MOCK_MASTERS.find(m => m.id === masterId)
+  const master = getMasterById(masterId)
+  const myServices = getServicesForMaster(masterId)
 
   const days = getNext14Days()
   const slots = generateSlots()
@@ -107,7 +108,7 @@ export default function MasterSchedule() {
           <p className="text-xs text-gray-500">{formatDate(selectedDate)}</p>
           <p className="font-semibold text-sm text-gray-900">
             {todayBookings.length} записей · {todayBookings.reduce((a,b) => {
-              const s = MOCK_SERVICES.find(s => s.id === b.service_id)
+              const s = myServices.find(s => s.id === b.service_id)
               return a + (s?.price || 0)
             }, 0)} ₽
           </p>
@@ -172,7 +173,7 @@ export default function MasterSchedule() {
         )}
         <div className="space-y-3">
           {todayBookings.map(b => {
-            const service = MOCK_SERVICES.find(s => s.id === b.service_id)
+            const service = myServices.find(s => s.id === b.service_id)
             const st = STATUS_LABELS[b.status] || STATUS_LABELS.pending
             const isExpanded = expandedBooking === b.id
             return (

@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom'
-import { MOCK_MASTERS, MOCK_SERVICES, MOCK_REVIEWS } from '../../lib/mockData'
+import { MOCK_REVIEWS } from '../../lib/mockData'
+import { getMasterById, getServicesForMaster } from '../../lib/auth'
 import PageHeader from '../../components/PageHeader'
 import Stars from '../../components/Stars'
 import LevelBadge from '../../components/LevelBadge'
@@ -8,13 +9,13 @@ import { Calendar } from 'lucide-react'
 export default function MasterPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const master = MOCK_MASTERS.find(m => m.id === id)
-  const services = MOCK_SERVICES.filter(s => s.master_id === id && s.active)
+  const master = getMasterById(id)
+  const services = getServicesForMaster(id).filter(s => s.active)
   const reviews = MOCK_REVIEWS.filter(r => r.master_id === id)
 
   if (!master) return <div className="p-4">Мастер не найден</div>
 
-  const minPrice = Math.min(...services.map(s => s.price))
+  const minPrice = services.length ? Math.min(...services.map(s => s.price)) : 0
 
   return (
     <div className="pb-28">
