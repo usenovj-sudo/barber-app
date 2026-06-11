@@ -40,6 +40,7 @@ export const MOCK_MASTERS = [
     rating: 4.9,
     reviews_count: 89,
     accepts_children: true,
+    phone: '79991112233',
   },
   {
     id: 'm2',
@@ -52,6 +53,7 @@ export const MOCK_MASTERS = [
     rating: 4.6,
     reviews_count: 45,
     accepts_children: false,
+    phone: '79994445566',
   },
   {
     id: 'm3',
@@ -64,6 +66,7 @@ export const MOCK_MASTERS = [
     rating: 4.3,
     reviews_count: 23,
     accepts_children: true,
+    phone: '79997778899',
   },
 ]
 

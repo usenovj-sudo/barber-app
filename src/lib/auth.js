@@ -82,6 +82,7 @@ export const masterAuth = {
       specialization: user.specialization,
       bio: 'Новый мастер.',
       photo: 'https://images.unsplash.com/photo-1503443207922-dff7d543fd0e?w=200&q=80',
+      phone: p,
       rating: 0,
       reviews_count: 0,
       accepts_children: true,
@@ -130,6 +131,18 @@ export function getAllMasters() {
 
 export function getMasterById(id) {
   return getAllMasters().find(m => m.id === id)
+}
+
+// Поиск мастера по имени или телефону
+export function searchMasters(query) {
+  const q = query.trim().toLowerCase()
+  if (!q) return []
+  const digits = q.replace(/\D/g, '')
+  return getAllMasters().filter(m => {
+    const byName = m.name.toLowerCase().includes(q)
+    const byPhone = digits.length >= 3 && (m.phone || '').includes(digits)
+    return byName || byPhone
+  })
 }
 
 // Услуги мастера: сохранённые в localStorage имеют приоритет над демо

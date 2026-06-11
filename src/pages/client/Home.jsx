@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MapPin, Star, Phone, Navigation } from 'lucide-react'
+import { MapPin, Star, Phone, Navigation, Search, X } from 'lucide-react'
 import { MOCK_SALONS } from '../../lib/mockData'
+import { searchMasters } from '../../lib/auth'
+import Stars from '../../components/Stars'
+import LevelBadge from '../../components/LevelBadge'
 
 function getDistance(lat1, lon1, lat2, lon2) {
   const R = 6371
@@ -15,6 +18,8 @@ export default function Home() {
   const navigate = useNavigate()
   const [userPos, setUserPos] = useState(null)
   const [locError, setLocError] = useState(false)
+  const [query, setQuery] = useState('')
+  const results = query.trim() ? searchMasters(query) : null
 
   useEffect(() => {
     navigator.geolocation?.getCurrentPosition(
@@ -30,14 +35,67 @@ export default function Home() {
            style={{ paddingTop: `calc(env(safe-area-inset-top) + 24px)` }}>
         <p className="text-sm text-gray-400 mb-1">Привет! 👋</p>
         <h1 className="text-2xl font-bold">Найди своего мастера</h1>
-        {locError && (
+
+        {/* Поиск */}
+        <div className="relative mt-4">
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Имя мастера или телефон"
+            className="w-full bg-white text-gray-900 rounded-xl pl-10 pr-10 py-3 text-base outline-none" />
+          {query && (
+            <button onClick={() => setQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+              <X size={18} />
+            </button>
+          )}
+        </div>
+
+        {locError && !query && (
           <p className="text-xs text-yellow-400 mt-2">
             📍 Разреши геолокацию для отображения расстояния
           </p>
         )}
       </div>
 
-      {/* Список салонов */}
+      {/* Результаты поиска мастеров */}
+      {results && (
+        <div className="px-4 py-4">
+          <h2 className="font-semibold text-gray-700 text-sm uppercase tracking-wide mb-3">
+            {results.length ? `Найдено мастеров: ${results.length}` : 'Ничего не найдено'}
+          </h2>
+          {results.length === 0 && (
+            <p className="text-sm text-gray-400">
+              Проверьте имя или номер телефона мастера
+            </p>
+          )}
+          <div className="space-y-3">
+            {results.map(master => (
+              <div key={master.id}
+                   onClick={() => navigate(`/master/${master.id}`)}
+                   className="flex gap-3 bg-white rounded-2xl border border-gray-100 shadow-sm p-3 active:scale-[0.98] transition-transform cursor-pointer">
+                <img src={master.photo} alt={master.name}
+                     className="w-16 h-16 rounded-xl object-cover shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-gray-900">{master.name}</h3>
+                    <LevelBadge level={master.level} />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5 truncate">{master.specialization}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Stars rating={master.rating} />
+                    <span className="text-xs text-gray-500">{master.rating} ({master.reviews_count})</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Список салонов (скрыт во время поиска) */}
+      {!results && (
       <div className="px-4 py-4 space-y-4">
         <h2 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">
           Парикмахерские рядом
@@ -88,6 +146,7 @@ export default function Home() {
           )
         })}
       </div>
+      )}
     </div>
   )
 }
