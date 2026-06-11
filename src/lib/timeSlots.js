@@ -43,6 +43,11 @@ export function getSlotStatus(slot, date, masterId, bookings, blocks) {
   return 'free'
 }
 
+// Сколько 30-минутных слотов занимает услуга заданной длительности
+export function slotsNeeded(duration) {
+  return Math.max(1, Math.ceil(duration / SLOT_MINUTES))
+}
+
 export function addMinutes(time, minutes) {
   const [h, m] = time.split(':').map(Number)
   const total = h * 60 + m + minutes

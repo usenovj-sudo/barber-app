@@ -199,9 +199,14 @@ export default function MasterProfile() {
                   <label className="text-sm font-semibold text-gray-700 mb-1 block">Длительность</label>
                   <select value={form.duration} onChange={e => setForm({...form, duration: e.target.value})}
                     className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#1a1a2e] bg-white">
+                    <option value="15">15 мин</option>
                     <option value="30">30 мин</option>
-                    <option value="60">60 мин</option>
-                    <option value="90">90 мин</option>
+                    <option value="45">45 мин</option>
+                    <option value="60">1 час</option>
+                    <option value="90">1 ч 30 мин</option>
+                    <option value="120">2 часа</option>
+                    <option value="150">2 ч 30 мин</option>
+                    <option value="180">3 часа</option>
                   </select>
                 </div>
               </div>

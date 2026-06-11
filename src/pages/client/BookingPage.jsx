@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getMasterById, getServicesForMaster, clientAuth } from '../../lib/auth'
 import { store } from '../../lib/store'
-import { generateSlots, getSlotStatus, addMinutes, formatDate, getNext14Days } from '../../lib/timeSlots'
+import { generateSlots, getSlotStatus, addMinutes, slotsNeeded, formatDate, getNext14Days } from '../../lib/timeSlots'
 import PageHeader from '../../components/PageHeader'
 import { CheckCircle2 } from 'lucide-react'
 
@@ -37,12 +37,14 @@ export default function BookingPage() {
   }
 
   function canBook(slot) {
-    if (getStatus(slot) !== 'free') return false
     if (!service) return false
-    if (service.duration > 30) {
-      const nextTime = addMinutes(slot.time, 30)
-      const nextSlot = slots.find(s => s.time === nextTime)
-      if (!nextSlot || getStatus(nextSlot) !== 'free') return false
+    // услуга может занимать несколько 30-минутных слотов подряд
+    const need = slotsNeeded(service.duration)
+    let t = slot.time
+    for (let i = 0; i < need; i++) {
+      const s = slots.find(s => s.time === t)
+      if (!s || getStatus(s) !== 'free') return false
+      t = addMinutes(t, 30)
     }
     return true
   }
