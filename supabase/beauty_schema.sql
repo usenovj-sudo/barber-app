@@ -123,7 +123,7 @@ create or replace function beauty_register(
   p_name text, p_phone text, p_password text,
   p_specialization text, p_city text, p_username text
 ) returns jsonb
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public, extensions as $$
 declare
   v_phone  text := regexp_replace(p_phone, '\D', '', 'g');
   v_id     text := 'bm' || (extract(epoch from now()) * 1000)::bigint::text;
@@ -162,7 +162,7 @@ $$;
 
 create or replace function beauty_login(p_phone text, p_password text)
 returns jsonb
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public, extensions as $$
 declare
   v_phone  text := regexp_replace(p_phone, '\D', '', 'g');
   v_acc    beauty_accounts;
