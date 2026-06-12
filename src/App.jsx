@@ -29,6 +29,7 @@ import BeautyProfile from './pages/beauty/master/BeautyProfile'
 import BeautyPortfolio from './pages/beauty/master/BeautyPortfolio'
 
 // ── Beauty client (public, no auth) ─────────────────────────
+import BeautyCatalog from './pages/beauty/client/BeautyCatalog'
 import MasterPublicPage from './pages/beauty/client/MasterPublicPage'
 import BeautyBooking from './pages/beauty/client/BeautyBooking'
 
@@ -58,7 +59,7 @@ function Shell() {
   const path = location.pathname
   const isBarberAuth = BARBER_AUTH_PATHS.includes(path)
   const isBeautyAuth = BEAUTY_AUTH_PATHS.includes(path)
-  const isPublicBeauty = path.startsWith('/b/')
+  const isPublicBeauty = path.startsWith('/b/') || (APP_MODE === 'beauty' && path === '/')
   const isBeautyPro = path.startsWith('/beauty/pro')
   const isBarberPro = path.startsWith('/pro')
   const isAnyAuth = isBarberAuth || isBeautyAuth
@@ -72,7 +73,7 @@ function Shell() {
         <Route path="/m/:id" element={<MasterLink />} />
         <Route path="/" element={
           APP_MODE === 'beauty'
-            ? <Navigate to="/beauty/pro" replace />
+            ? <BeautyCatalog />
             : <ClientGuard><Home /></ClientGuard>
         } />
         <Route path="/salon/:id" element={<ClientGuard><SalonPage /></ClientGuard>} />

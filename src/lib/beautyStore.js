@@ -70,6 +70,13 @@ export const masterStore = {
     return data || null
   },
 
+  getAll: async () => {
+    const { data } = await supabase
+      .from('beauty_masters').select('*')
+      .order('rating', { ascending: false })
+    return data || []
+  },
+
   getByUsername: async (username) => {
     const { data } = await supabase
       .from('beauty_masters').select('*').eq('username', username).maybeSingle()

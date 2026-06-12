@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { beautyMasterAuth } from '../../../lib/beautyAuth'
 import { masterStore, serviceStore } from '../../../lib/beautyStore'
 import { BEAUTY_CATEGORIES } from '../../../lib/beautyData'
-import { Share2, Copy, Check, Plus, Pencil, Trash2, ToggleLeft, ToggleRight, MessageCircle } from 'lucide-react'
+import { Share2, Copy, Check, Plus, Pencil, Trash2, ToggleLeft, ToggleRight, MessageCircle, LocateFixed } from 'lucide-react'
 
 const DURATIONS = [
   { v: 30, l: '30 мин' }, { v: 45, l: '45 мин' }, { v: 60, l: '1 час' },
@@ -25,7 +25,9 @@ export default function BeautyProfile() {
     bio: '', deposit_percent: 20, deposit_required: false,
     work_start: '09:00', work_end: '19:00',
     whatsapp_notify: false, whatsapp_apikey: '',
+    lat: null, lng: null, address: '', address_comment: '',
   })
+  const [gpsLoading, setGpsLoading] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -45,6 +47,10 @@ export default function BeautyProfile() {
         work_end: m.work_end || '19:00',
         whatsapp_notify: m.whatsapp_notify || false,
         whatsapp_apikey: m.whatsapp_apikey || '',
+        lat: m.lat || null,
+        lng: m.lng || null,
+        address: m.address || '',
+        address_comment: m.address_comment || '',
       })
     })()
     return () => { alive = false }
@@ -64,6 +70,35 @@ export default function BeautyProfile() {
     } else {
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
     }
+  }
+
+  async function detectLocation() {
+    if (!navigator.geolocation) return alert('GPS недоступен в этом браузере')
+    setGpsLoading(true)
+    navigator.geolocation.getCurrentPosition(
+      async pos => {
+        const { latitude: lat, longitude: lng } = pos.coords
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ru`,
+            { headers: { 'Accept-Language': 'ru' } }
+          )
+          const data = await res.json()
+          const a = data.address || {}
+          const parts = [
+            a.road && (a.road + (a.house_number ? ', ' + a.house_number : '')),
+            a.suburb || a.neighbourhood || a.quarter,
+            a.city || a.town || a.village || a.county,
+          ].filter(Boolean)
+          const addressText = parts.join(', ')
+          setPForm(f => ({ ...f, lat, lng, address: addressText || data.display_name || '' }))
+        } catch {
+          setPForm(f => ({ ...f, lat, lng }))
+        }
+        setGpsLoading(false)
+      },
+      () => { setGpsLoading(false); alert('Не удалось определить местоположение') }
+    )
   }
 
   async function saveServices(updated) { setServices(updated); await serviceStore.save(masterId, updated) }
@@ -141,6 +176,42 @@ export default function BeautyProfile() {
               <input type="time" value={pForm.work_end} onChange={e => setPForm({ ...pForm, work_end: e.target.value })}
                 className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-rose-400" />
             </div>
+          </div>
+
+          {/* Адрес / геолокация */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 mb-2 block">📍 Адрес рабочего места</label>
+            <button
+              type="button"
+              onClick={detectLocation}
+              className={`w-full flex items-center justify-center gap-2 border rounded-xl py-2.5 text-sm font-semibold mb-2 transition-all ${
+                pForm.lat
+                  ? 'bg-green-50 border-green-200 text-green-700'
+                  : 'bg-white border-gray-200 text-gray-600'
+              }`}
+            >
+              <LocateFixed size={16} className={gpsLoading ? 'animate-spin' : ''} />
+              {gpsLoading
+                ? 'Определяем...'
+                : pForm.lat
+                ? '✓ Местоположение определено'
+                : 'Определить моё местоположение'}
+            </button>
+            <input
+              value={pForm.address}
+              onChange={e => setPForm({ ...pForm, address: e.target.value })}
+              placeholder="Улица, дом, район..."
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-rose-400 mb-2"
+            />
+            <input
+              value={pForm.address_comment}
+              onChange={e => setPForm({ ...pForm, address_comment: e.target.value })}
+              placeholder="Ориентир: 2-й этаж, вход со двора..."
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-rose-400"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Клиенты увидят ваш адрес в каталоге и смогут найти вас по расстоянию
+            </p>
           </div>
 
           {/* Deposit settings */}
