@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { masterStore, serviceStore, portfolioStore } from '../../../lib/beautyStore'
 import { DEMO_REVIEWS } from '../../../lib/beautyData'
@@ -18,14 +18,43 @@ function Stars({ rating }) {
 export default function MasterPublicPage() {
   const { masterId } = useParams()
   const navigate = useNavigate()
-  const master = masterStore.getById(masterId)
-  const services = serviceStore.getForMaster(masterId).filter(s => s.active)
-  const portfolio = portfolioStore.getForMaster(masterId)
+  const [master, setMaster] = useState(null)
+  const [services, setServices] = useState([])
+  const [portfolio, setPortfolio] = useState([])
+  const [loading, setLoading] = useState(true)
   const reviews = DEMO_REVIEWS.filter(r => r.master_id === masterId)
 
   const [tab, setTab] = useState('services')
 
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const [m, s, p] = await Promise.all([
+        masterStore.getById(masterId),
+        serviceStore.getForMaster(masterId),
+        portfolioStore.getForMaster(masterId),
+      ])
+      if (!alive) return
+      setMaster(m)
+      setServices(s.filter(x => x.active))
+      setPortfolio(p)
+      setLoading(false)
+    })()
+    return () => { alive = false }
+  }, [masterId])
+
   const cat = BEAUTY_CATEGORIES.find(c => c.id === master?.specialization)
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-400">
+        <div className="animate-pulse text-center">
+          <div className="text-4xl mb-2">💅</div>
+          <p className="text-sm">Загрузка...</p>
+        </div>
+      </div>
+    )
+  }
 
   if (!master) {
     return (

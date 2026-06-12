@@ -1,68 +1,62 @@
-import { masterStore } from './beautyStore'
+// Авторизация beauty-мастера. Пароль проверяется на сервере (Supabase RPC),
+// сессия хранится локально в браузере.
+import { supabase } from './supabase'
 
-const KEY_ACCOUNTS = 'beauty_master_accounts'
 const KEY_SESSION = 'beauty_session_master'
 
 function normalizePhone(phone) {
   return phone.replace(/\D/g, '')
 }
-function read(key) {
-  return JSON.parse(localStorage.getItem(key) || '[]')
-}
-function write(key, data) {
-  localStorage.setItem(key, JSON.stringify(data))
+
+function buildSession(master) {
+  return {
+    id: master.id,
+    master_id: master.id,
+    name: master.name,
+    phone: master.phone,
+    role: 'beauty_master',
+  }
 }
 
 export const beautyMasterAuth = {
-  register({ name, phone, password, specialization, city }) {
+  async register({ name, phone, password, specialization, city }) {
     const p = normalizePhone(phone)
     if (p.length < 10) return { error: 'Введите корректный номер телефона' }
     if (!password || password.length < 4) return { error: 'Пароль минимум 4 символа' }
     if (!name?.trim()) return { error: 'Введите имя' }
 
-    const accounts = read(KEY_ACCOUNTS)
-    if (accounts.find(a => a.phone === p)) return { error: 'Этот номер уже зарегистрирован' }
+    const username = transliterate(name.trim()) + '_' + Date.now().toString().slice(-4)
 
-    const masterId = 'bm' + Date.now()
-    const username = transliterate(name.trim()) + '_' + masterId.slice(-4)
+    const { data, error } = await supabase.rpc('beauty_register', {
+      p_name: name.trim(),
+      p_phone: p,
+      p_password: password,
+      p_specialization: specialization || 'nails',
+      p_city: city?.trim() || '',
+      p_username: username,
+    })
 
-    const account = { id: masterId, phone: p, password, master_id: masterId }
-    accounts.push(account)
-    write(KEY_ACCOUNTS, accounts)
+    if (error) return { error: 'Ошибка подключения к серверу. Попробуйте ещё раз.' }
+    if (data?.error) return { error: data.error }
 
-    const profile = {
-      id: masterId,
-      name: name.trim(),
-      username,
-      phone: p,
-      specialization: specialization || 'nails',
-      city: city?.trim() || '',
-      bio: '',
-      photo: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=300&q=80',
-      rating: 0,
-      reviews_count: 0,
-      work_start: '09:00',
-      work_end: '19:00',
-      work_days: [1, 2, 3, 4, 5, 6],
-      deposit_percent: 0,
-      deposit_required: false,
-      self_registered: true,
-    }
-    masterStore.save(profile)
-
-    const session = { id: masterId, master_id: masterId, name: name.trim(), phone: p, role: 'beauty_master' }
-    write(KEY_SESSION, session)
+    const session = buildSession(data)
+    localStorage.setItem(KEY_SESSION, JSON.stringify(session))
     return { user: session }
   },
 
-  login({ phone, password }) {
+  async login({ phone, password }) {
     const p = normalizePhone(phone)
-    const accounts = read(KEY_ACCOUNTS)
-    const account = accounts.find(a => a.phone === p)
-    if (!account) return { error: 'Аккаунт не найден. Зарегистрируйтесь.' }
-    if (account.password !== password) return { error: 'Неверный пароль' }
-    const session = { id: account.id, master_id: account.master_id, name: masterStore.getById(account.master_id)?.name || '', phone: p, role: 'beauty_master' }
-    write(KEY_SESSION, session)
+
+    const { data, error } = await supabase.rpc('beauty_login', {
+      p_phone: p,
+      p_password: password,
+    })
+
+    if (error) return { error: 'Ошибка подключения к серверу. Попробуйте ещё раз.' }
+    if (data?.error) return { error: data.error }
+
+    const session = buildSession(data)
+    localStorage.setItem(KEY_SESSION, JSON.stringify(session))
     return { user: session }
   },
 

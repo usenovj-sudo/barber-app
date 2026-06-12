@@ -17,7 +17,7 @@ export default function BeautyMasterRegister() {
     e.preventDefault()
     setLoading(true)
     setError('')
-    const res = beautyMasterAuth.register(form)
+    const res = await beautyMasterAuth.register(form)
     if (res.error) { setError(res.error); setLoading(false); return }
     navigate('/beauty/pro')
   }

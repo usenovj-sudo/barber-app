@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { beautyMasterAuth } from '../../../lib/beautyAuth'
 import { portfolioStore } from '../../../lib/beautyStore'
 import { BEAUTY_CATEGORIES } from '../../../lib/beautyData'
@@ -7,7 +7,7 @@ import { Plus, Trash2, X, ImageIcon } from 'lucide-react'
 export default function BeautyPortfolio() {
   const user = beautyMasterAuth.current()
   const masterId = user?.master_id
-  const [items, setItems] = useState(() => portfolioStore.getForMaster(masterId))
+  const [items, setItems] = useState([])
   const [addModal, setAddModal] = useState(false)
   const [preview, setPreview] = useState(null)
   const [caption, setCaption] = useState('')
@@ -15,7 +15,16 @@ export default function BeautyPortfolio() {
   const [loading, setLoading] = useState(false)
   const inputRef = useRef()
 
-  function reload() { setItems(portfolioStore.getForMaster(masterId)) }
+  async function reload() { setItems(await portfolioStore.getForMaster(masterId)) }
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const data = await portfolioStore.getForMaster(masterId)
+      if (alive) setItems(data)
+    })()
+    return () => { alive = false }
+  }, [masterId])
 
   function handleFile(e) {
     const file = e.target.files[0]
@@ -25,10 +34,10 @@ export default function BeautyPortfolio() {
     reader.readAsDataURL(file)
   }
 
-  function handleAdd() {
+  async function handleAdd() {
     if (!preview) return alert('Выберите фото')
     setLoading(true)
-    portfolioStore.add(masterId, { url: preview, caption, category })
+    await portfolioStore.add(masterId, { url: preview, caption, category })
     setLoading(false)
     setPreview(null)
     setCaption('')
@@ -36,9 +45,9 @@ export default function BeautyPortfolio() {
     reload()
   }
 
-  function remove(id) {
+  async function remove(id) {
     if (!confirm('Удалить фото?')) return
-    portfolioStore.remove(masterId, id)
+    await portfolioStore.remove(masterId, id)
     reload()
   }
 

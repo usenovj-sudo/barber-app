@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { bookingStore, masterStore } from '../../../lib/beautyStore'
+import { useState, useEffect } from 'react'
+import { bookingStore } from '../../../lib/beautyStore'
 import { beautyMasterAuth } from '../../../lib/beautyAuth'
 import { format, isToday, isTomorrow, parseISO } from 'date-fns'
 import { ru } from 'date-fns/locale'
@@ -22,19 +22,34 @@ function formatDate(dateStr) {
 export default function BeautyDashboard() {
   const user = beautyMasterAuth.current()
   const masterId = user?.master_id
-  const [bookings, setBookings] = useState(() => bookingStore.getForMaster(masterId))
+  const [bookings, setBookings] = useState([])
+  const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('active')
   const [receiptModal, setReceiptModal] = useState(null)
 
-  function reload() { setBookings(bookingStore.getForMaster(masterId)) }
+  async function reload() {
+    const data = await bookingStore.getForMaster(masterId)
+    setBookings(data)
+    setLoading(false)
+  }
 
-  function confirm(id) { bookingStore.confirmBooking(id); reload() }
-  function reject(id) { bookingStore.rejectBooking(id); reload() }
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const data = await bookingStore.getForMaster(masterId)
+      if (!alive) return
+      setBookings(data)
+      setLoading(false)
+    })()
+    return () => { alive = false }
+  }, [masterId])
+
+  async function confirm(id) { await bookingStore.confirmBooking(id); reload() }
+  async function reject(id) { await bookingStore.rejectBooking(id); reload() }
 
   const today = new Date().toISOString().split('T')[0]
   const pending = bookings.filter(b => b.status === 'awaiting_confirmation')
   const todayConfirmed = bookings.filter(b => b.date === today && b.status === 'confirmed')
-  const revenue = todayConfirmed.reduce((sum, b) => sum + (b.service_price || 0), 0)
 
   const filtered = bookings.filter(b => {
     if (filter === 'active') return ['awaiting_confirmation', 'confirmed'].includes(b.status) && b.date >= today
@@ -88,7 +103,13 @@ export default function BeautyDashboard() {
 
       {/* Bookings list */}
       <div className="px-4 mt-4 space-y-3">
-        {filtered.length === 0 && (
+        {loading && (
+          <div className="text-center py-16 text-gray-400">
+            <Clock size={40} className="mx-auto mb-3 opacity-30 animate-pulse" />
+            <p className="font-medium">Загрузка...</p>
+          </div>
+        )}
+        {!loading && filtered.length === 0 && (
           <div className="text-center py-16 text-gray-400">
             <Clock size={40} className="mx-auto mb-3 opacity-30" />
             <p className="font-medium">Записей нет</p>

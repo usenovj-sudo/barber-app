@@ -13,7 +13,7 @@ export default function BeautyMasterLogin() {
     e.preventDefault()
     setLoading(true)
     setError('')
-    const res = beautyMasterAuth.login(form)
+    const res = await beautyMasterAuth.login(form)
     if (res.error) { setError(res.error); setLoading(false); return }
     navigate('/beauty/pro')
   }

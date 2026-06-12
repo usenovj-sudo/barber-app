@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { beautyMasterAuth } from '../../../lib/beautyAuth'
 import { masterStore, serviceStore } from '../../../lib/beautyStore'
 import { BEAUTY_CATEGORIES } from '../../../lib/beautyData'
@@ -15,19 +15,37 @@ const DEPOSIT_PRESETS = [10, 20, 30, 50]
 export default function BeautyProfile() {
   const user = beautyMasterAuth.current()
   const masterId = user?.master_id
-  const [master, setMaster] = useState(() => masterStore.getById(masterId))
-  const [services, setServices] = useState(() => serviceStore.getForMaster(masterId))
+  const [master, setMaster] = useState(null)
+  const [services, setServices] = useState([])
   const [copied, setCopied] = useState(false)
   const [modal, setModal] = useState(null)
   const [form, setForm] = useState({ name: '', category: 'nails', price: '', duration: 90, active: true })
   const [editProfile, setEditProfile] = useState(false)
   const [pForm, setPForm] = useState({
-    bio: master?.bio || '',
-    deposit_percent: master?.deposit_percent ?? 20,
-    deposit_required: master?.deposit_required || false,
-    work_start: master?.work_start || '09:00',
-    work_end: master?.work_end || '19:00',
+    bio: '', deposit_percent: 20, deposit_required: false,
+    work_start: '09:00', work_end: '19:00',
   })
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const [m, s] = await Promise.all([
+        masterStore.getById(masterId),
+        serviceStore.getForMaster(masterId),
+      ])
+      if (!alive) return
+      setMaster(m)
+      setServices(s)
+      if (m) setPForm({
+        bio: m.bio || '',
+        deposit_percent: m.deposit_percent ?? 20,
+        deposit_required: m.deposit_required || false,
+        work_start: m.work_start || '09:00',
+        work_end: m.work_end || '19:00',
+      })
+    })()
+    return () => { alive = false }
+  }, [masterId])
 
   const shareUrl = `${window.location.origin}/b/${masterId}`
 
@@ -39,13 +57,13 @@ export default function BeautyProfile() {
   async function handleShare() {
     const text = `Записывайся ко мне 💅\n${shareUrl}`
     if (navigator.share) {
-      try { await navigator.share({ title: master?.name, text, url: shareUrl }) } catch {}
+      try { await navigator.share({ title: master?.name, text, url: shareUrl }) } catch { /* отменено пользователем */ }
     } else {
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
     }
   }
 
-  function saveServices(updated) { serviceStore.save(masterId, updated); setServices(updated) }
+  async function saveServices(updated) { setServices(updated); await serviceStore.save(masterId, updated) }
 
   function openAdd() {
     setForm({ name: '', category: master?.specialization || 'nails', price: '', duration: 90, active: true })
@@ -67,11 +85,11 @@ export default function BeautyProfile() {
     setModal(null)
   }
 
-  function saveProfile() {
+  async function saveProfile() {
     const updated = { ...master, ...pForm, deposit_percent: Number(pForm.deposit_percent) }
-    masterStore.save(updated)
     setMaster(updated)
     setEditProfile(false)
+    await masterStore.save(updated)
   }
 
   const cat = BEAUTY_CATEGORIES.find(c => c.id === master?.specialization)

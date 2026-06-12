@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { masterStore, serviceStore, bookingStore, blockStore } from '../../../lib/beautyStore'
 import { BEAUTY_CATEGORIES } from '../../../lib/beautyData'
@@ -58,15 +58,14 @@ export default function BeautyBooking() {
   const location = useLocation()
   const preselectedServiceId = location.state?.serviceId
 
-  const master = masterStore.getById(masterId)
-  const services = serviceStore.getForMaster(masterId).filter(s => s.active)
-  const existingBookings = bookingStore.getForMaster(masterId)
-  const blocks = blockStore.getForMaster(masterId)
+  const [master, setMaster] = useState(null)
+  const [services, setServices] = useState([])
+  const [existingBookings, setExistingBookings] = useState([])
+  const [blocks, setBlocks] = useState([])
+  const [loading, setLoading] = useState(true)
 
   const [step, setStep] = useState(1)
-  const [selectedService, setSelectedService] = useState(
-    preselectedServiceId ? services.find(s => s.id === preselectedServiceId) || null : null
-  )
+  const [selectedService, setSelectedService] = useState(null)
   const [selectedDate, setSelectedDate] = useState(null)
   const [selectedTime, setSelectedTime] = useState(null)
   const [clientName, setClientName] = useState('')
@@ -82,7 +81,42 @@ export default function BeautyBooking() {
   const [showManual, setShowManual] = useState(false)
 
   const [done, setDone] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const receiptRef = useRef()
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const [m, s, b, bl] = await Promise.all([
+        masterStore.getById(masterId),
+        serviceStore.getForMaster(masterId),
+        bookingStore.getForMaster(masterId),
+        blockStore.getForMaster(masterId),
+      ])
+      if (!alive) return
+      setMaster(m)
+      const activeServices = s.filter(x => x.active)
+      setServices(activeServices)
+      setExistingBookings(b)
+      setBlocks(bl)
+      if (preselectedServiceId) {
+        setSelectedService(activeServices.find(x => x.id === preselectedServiceId) || null)
+      }
+      setLoading(false)
+    })()
+    return () => { alive = false }
+  }, [masterId, preselectedServiceId])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-400">
+        <div className="animate-pulse text-center">
+          <div className="text-4xl mb-2">💅</div>
+          <p className="text-sm">Загрузка...</p>
+        </div>
+      </div>
+    )
+  }
 
   if (!master) {
     return (
@@ -163,10 +197,12 @@ export default function BeautyBooking() {
     return true
   }
 
-  function submitBooking() {
+  async function submitBooking() {
+    setSubmitting(true)
     const dateStr = format(selectedDate, 'yyyy-MM-dd')
     const endTime = formatEndTime(selectedTime, selectedService.duration)
-    bookingStore.add({
+    try {
+      await bookingStore.add({
       master_id: masterId,
       client_name: clientName.trim(),
       client_phone: clientPhone.replace(/\D/g, ''),
@@ -185,8 +221,12 @@ export default function BeautyBooking() {
       // Auto-confirmed when deposit OK, awaiting otherwise
       status: depositRequired ? 'confirmed' : 'awaiting_confirmation',
       comment,
-    })
-    setDone(true)
+      })
+      setDone(true)
+    } catch {
+      setSubmitting(false)
+      alert('Не удалось сохранить запись. Проверьте соединение и попробуйте ещё раз.')
+    }
   }
 
   // ── Done screen ──────────────────────────────────────────
@@ -530,9 +570,9 @@ export default function BeautyBooking() {
         ) : (
           <button
             onClick={submitBooking}
-            disabled={!canStep3()}
+            disabled={!canStep3() || submitting}
             className="w-full bg-rose-600 text-white rounded-2xl py-4 font-bold text-base disabled:opacity-40">
-            {depositRequired ? 'Подтвердить бронь и записаться' : 'Отправить заявку'}
+            {submitting ? 'Сохраняем...' : depositRequired ? 'Подтвердить бронь и записаться' : 'Отправить заявку'}
           </button>
         )}
       </div>

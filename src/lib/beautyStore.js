@@ -1,140 +1,129 @@
-import { DEMO_BOOKINGS, DEMO_MASTER_PROFILE, DEMO_SERVICES, DEMO_PORTFOLIO } from './beautyData'
-
-const KEY_BOOKINGS = 'beauty_bookings'
-const KEY_MASTERS = 'beauty_registered_masters'
-const KEY_BLOCKS = 'beauty_blocks'
-
-function read(key, fallback = []) {
-  try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)) } catch { return fallback }
-}
-function write(key, data) {
-  localStorage.setItem(key, JSON.stringify(data))
-}
-
-if (!localStorage.getItem(KEY_BOOKINGS)) {
-  write(KEY_BOOKINGS, DEMO_BOOKINGS)
-}
+// Слой данных beauty — Supabase (Postgres). Все методы асинхронные.
+import { supabase } from './supabase'
 
 // ──── BOOKINGS ────────────────────────────────────────────────
 export const bookingStore = {
-  getAll: () => read(KEY_BOOKINGS),
-
-  getForMaster: (masterId) => read(KEY_BOOKINGS).filter(b => b.master_id === masterId),
-
-  add: (booking) => {
-    const all = read(KEY_BOOKINGS)
-    const newBooking = { ...booking, id: 'bb' + Date.now() }
-    write(KEY_BOOKINGS, [...all, newBooking])
-    return newBooking
+  getForMaster: async (masterId) => {
+    const { data } = await supabase
+      .from('beauty_bookings').select('*').eq('master_id', masterId)
+    return data || []
   },
 
-  updateStatus: (id, status) => {
-    const updated = read(KEY_BOOKINGS).map(b => b.id === id ? { ...b, status } : b)
-    write(KEY_BOOKINGS, updated)
+  add: async (booking) => {
+    const row = { ...booking, id: 'bb' + Date.now() }
+    const { data, error } = await supabase
+      .from('beauty_bookings').insert(row).select().single()
+    if (error) throw error
+    return data
   },
 
-  confirmBooking: (id) => {
-    const updated = read(KEY_BOOKINGS).map(b =>
-      b.id === id ? { ...b, status: 'confirmed', deposit_status: 'paid' } : b
-    )
-    write(KEY_BOOKINGS, updated)
+  updateStatus: async (id, status) => {
+    await supabase.from('beauty_bookings').update({ status }).eq('id', id)
   },
 
-  rejectBooking: (id) => {
-    const updated = read(KEY_BOOKINGS).map(b =>
-      b.id === id ? { ...b, status: 'rejected' } : b
-    )
-    write(KEY_BOOKINGS, updated)
+  confirmBooking: async (id) => {
+    await supabase.from('beauty_bookings')
+      .update({ status: 'confirmed', deposit_status: 'paid' }).eq('id', id)
   },
 
-  attachReceipt: (id, receiptUrl) => {
-    const updated = read(KEY_BOOKINGS).map(b =>
-      b.id === id ? { ...b, receipt_url: receiptUrl, deposit_status: 'pending' } : b
-    )
-    write(KEY_BOOKINGS, updated)
+  rejectBooking: async (id) => {
+    await supabase.from('beauty_bookings').update({ status: 'rejected' }).eq('id', id)
   },
 
-  cancel: (id) => {
-    const updated = read(KEY_BOOKINGS).map(b =>
-      b.id === id ? { ...b, status: 'cancelled' } : b
-    )
-    write(KEY_BOOKINGS, updated)
+  attachReceipt: async (id, receiptUrl) => {
+    await supabase.from('beauty_bookings')
+      .update({ receipt_url: receiptUrl, deposit_status: 'pending' }).eq('id', id)
   },
 
-  getByPhone: (phone) => {
+  cancel: async (id) => {
+    await supabase.from('beauty_bookings').update({ status: 'cancelled' }).eq('id', id)
+  },
+
+  getByPhone: async (phone) => {
     const digits = phone.replace(/\D/g, '')
-    return read(KEY_BOOKINGS).filter(b => b.client_phone.replace(/\D/g, '') === digits)
+    const { data } = await supabase
+      .from('beauty_bookings').select('*').eq('client_phone', digits)
+    return data || []
   },
 }
 
 // ──── BLOCKS ─────────────────────────────────────────────────
 export const blockStore = {
-  getForMaster: (masterId) => read(KEY_BLOCKS).filter(b => b.master_id === masterId),
-  add: (block) => {
-    const all = read(KEY_BLOCKS)
-    write(KEY_BLOCKS, [...all, { ...block, id: 'bl' + Date.now() }])
+  getForMaster: async (masterId) => {
+    const { data } = await supabase
+      .from('beauty_blocks').select('*').eq('master_id', masterId)
+    return data || []
   },
-  remove: (id) => write(KEY_BLOCKS, read(KEY_BLOCKS).filter(b => b.id !== id)),
+  add: async (block) => {
+    await supabase.from('beauty_blocks').insert({ ...block, id: 'bl' + Date.now() })
+  },
+  remove: async (id) => {
+    await supabase.from('beauty_blocks').delete().eq('id', id)
+  },
 }
 
 // ──── MASTERS ─────────────────────────────────────────────────
 export const masterStore = {
-  getAll: () => {
-    const saved = read(KEY_MASTERS)
-    const hasdemo = saved.find(m => m.id === DEMO_MASTER_PROFILE.id)
-    return hasdemo ? saved : [DEMO_MASTER_PROFILE, ...saved]
+  getById: async (id) => {
+    const { data } = await supabase
+      .from('beauty_masters').select('*').eq('id', id).maybeSingle()
+    return data || null
   },
 
-  getById: (id) => {
-    return masterStore.getAll().find(m => m.id === id) || null
+  getByUsername: async (username) => {
+    const { data } = await supabase
+      .from('beauty_masters').select('*').eq('username', username).maybeSingle()
+    return data || null
   },
 
-  getByUsername: (username) => {
-    return masterStore.getAll().find(m => m.username === username) || null
-  },
-
-  save: (profile) => {
-    const all = read(KEY_MASTERS).filter(m => m.id !== DEMO_MASTER_PROFILE.id)
-    const idx = all.findIndex(m => m.id === profile.id)
-    if (idx >= 0) all[idx] = profile
-    else all.push(profile)
-    write(KEY_MASTERS, all)
+  save: async (profile) => {
+    // upsert по id — обновляет профиль целиком
+    await supabase.from('beauty_masters').upsert(profile)
   },
 }
 
 // ──── SERVICES ────────────────────────────────────────────────
 export const serviceStore = {
-  getForMaster: (masterId) => {
-    const saved = localStorage.getItem('beauty_services_' + masterId)
-    if (saved) return JSON.parse(saved)
-    return DEMO_SERVICES.filter(s => s.master_id === masterId)
+  getForMaster: async (masterId) => {
+    const { data } = await supabase
+      .from('beauty_services').select('*').eq('master_id', masterId)
+      .order('created_at', { ascending: true })
+    return data || []
   },
 
-  save: (masterId, services) => {
-    localStorage.setItem('beauty_services_' + masterId, JSON.stringify(services))
+  // Полная замена списка услуг мастера
+  save: async (masterId, services) => {
+    await supabase.from('beauty_services').delete().eq('master_id', masterId)
+    if (services.length) {
+      const rows = services.map(s => ({
+        id: s.id, master_id: masterId, name: s.name, category: s.category,
+        price: Number(s.price) || 0, duration: s.duration, active: s.active,
+      }))
+      await supabase.from('beauty_services').insert(rows)
+    }
   },
 }
 
 // ──── PORTFOLIO ───────────────────────────────────────────────
 export const portfolioStore = {
-  getForMaster: (masterId) => {
-    const saved = localStorage.getItem('beauty_portfolio_' + masterId)
-    if (saved) return JSON.parse(saved)
-    return DEMO_PORTFOLIO.filter(p => p.master_id === masterId)
+  getForMaster: async (masterId) => {
+    const { data } = await supabase
+      .from('beauty_portfolio').select('*').eq('master_id', masterId)
+      .order('created_at', { ascending: true })
+    return data || []
   },
 
-  save: (masterId, items) => {
-    localStorage.setItem('beauty_portfolio_' + masterId, JSON.stringify(items))
+  add: async (masterId, item) => {
+    const row = {
+      id: 'p' + Date.now(), master_id: masterId,
+      url: item.url, caption: item.caption, category: item.category,
+    }
+    const { data } = await supabase
+      .from('beauty_portfolio').insert(row).select().single()
+    return data
   },
 
-  add: (masterId, item) => {
-    const items = portfolioStore.getForMaster(masterId)
-    const newItem = { ...item, id: 'p' + Date.now(), master_id: masterId }
-    portfolioStore.save(masterId, [...items, newItem])
-    return newItem
-  },
-
-  remove: (masterId, id) => {
-    portfolioStore.save(masterId, portfolioStore.getForMaster(masterId).filter(p => p.id !== id))
+  remove: async (masterId, id) => {
+    await supabase.from('beauty_portfolio').delete().eq('id', id)
   },
 }
