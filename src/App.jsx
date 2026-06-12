@@ -1,12 +1,13 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { clientAuth, masterAuth } from './lib/auth'
+import { beautyMasterAuth } from './lib/beautyAuth'
 import BottomNav from './components/BottomNav'
+import InstallPrompt from './components/InstallPrompt'
 
-// Client
+// ── Barber client ────────────────────────────────────────────
 import ClientLogin from './pages/client/ClientLogin'
 import ClientRegister from './pages/client/ClientRegister'
 import MasterLink from './pages/client/MasterLink'
-import InstallPrompt from './components/InstallPrompt'
 import Home from './pages/client/Home'
 import SalonPage from './pages/client/SalonPage'
 import MasterPage from './pages/client/MasterPage'
@@ -14,12 +15,24 @@ import BookingPage from './pages/client/BookingPage'
 import MyBookings from './pages/client/MyBookings'
 import Profile from './pages/client/Profile'
 
-// Master
+// ── Barber master ────────────────────────────────────────────
 import MasterLogin from './pages/master/MasterLogin'
 import MasterRegister from './pages/master/MasterRegister'
 import MasterSchedule from './pages/master/MasterSchedule'
 import MasterProfile from './pages/master/MasterProfile'
 
+// ── Beauty master ────────────────────────────────────────────
+import BeautyMasterLogin from './pages/beauty/master/BeautyMasterLogin'
+import BeautyMasterRegister from './pages/beauty/master/BeautyMasterRegister'
+import BeautyDashboard from './pages/beauty/master/BeautyDashboard'
+import BeautyProfile from './pages/beauty/master/BeautyProfile'
+import BeautyPortfolio from './pages/beauty/master/BeautyPortfolio'
+
+// ── Beauty client (public, no auth) ─────────────────────────
+import MasterPublicPage from './pages/beauty/client/MasterPublicPage'
+import BeautyBooking from './pages/beauty/client/BeautyBooking'
+
+// ── Guards ───────────────────────────────────────────────────
 function ClientGuard({ children }) {
   if (!clientAuth.current()) return <Navigate to="/login" replace />
   return children
@@ -28,16 +41,28 @@ function MasterGuard({ children }) {
   if (!masterAuth.current()) return <Navigate to="/pro/login" replace />
   return children
 }
+function BeautyMasterGuard({ children }) {
+  if (!beautyMasterAuth.current()) return <Navigate to="/beauty/pro/login" replace />
+  return children
+}
+
+const BEAUTY_AUTH_PATHS = ['/beauty/pro/login', '/beauty/pro/register']
+const BARBER_AUTH_PATHS = ['/login', '/register', '/pro/login', '/pro/register']
 
 function Shell() {
   const location = useLocation()
   const path = location.pathname
-  const isAuthPage = ['/login', '/register', '/pro/login', '/pro/register'].includes(path)
+  const isBarberAuth = BARBER_AUTH_PATHS.includes(path)
+  const isBeautyAuth = BEAUTY_AUTH_PATHS.includes(path)
+  const isPublicBeauty = path.startsWith('/b/')
+  const isBeautyPro = path.startsWith('/beauty/pro')
+  const isBarberPro = path.startsWith('/pro')
+  const isAnyAuth = isBarberAuth || isBeautyAuth
 
   return (
     <>
       <Routes>
-        {/* Клиентское приложение */}
+        {/* ── Barber client ── */}
         <Route path="/login" element={<ClientLogin />} />
         <Route path="/register" element={<ClientRegister />} />
         <Route path="/m/:id" element={<MasterLink />} />
@@ -48,16 +73,28 @@ function Shell() {
         <Route path="/bookings" element={<ClientGuard><MyBookings /></ClientGuard>} />
         <Route path="/profile" element={<ClientGuard><Profile /></ClientGuard>} />
 
-        {/* Приложение мастера (Про) */}
+        {/* ── Barber master ── */}
         <Route path="/pro/login" element={<MasterLogin />} />
         <Route path="/pro/register" element={<MasterRegister />} />
         <Route path="/pro" element={<MasterGuard><MasterSchedule /></MasterGuard>} />
         <Route path="/pro/profile" element={<MasterGuard><MasterProfile /></MasterGuard>} />
 
+        {/* ── Beauty master pro ── */}
+        <Route path="/beauty/pro/login" element={<BeautyMasterLogin />} />
+        <Route path="/beauty/pro/register" element={<BeautyMasterRegister />} />
+        <Route path="/beauty/pro" element={<BeautyMasterGuard><BeautyDashboard /></BeautyMasterGuard>} />
+        <Route path="/beauty/pro/profile" element={<BeautyMasterGuard><BeautyProfile /></BeautyMasterGuard>} />
+        <Route path="/beauty/pro/portfolio" element={<BeautyMasterGuard><BeautyPortfolio /></BeautyMasterGuard>} />
+
+        {/* ── Beauty public (no auth) ── */}
+        <Route path="/b/:masterId" element={<MasterPublicPage />} />
+        <Route path="/b/:masterId/book" element={<BeautyBooking />} />
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      {!isAuthPage && <BottomNav />}
-      {!isAuthPage && !path.startsWith('/pro') && <InstallPrompt />}
+
+      {!isAnyAuth && !isPublicBeauty && <BottomNav />}
+      {!isAnyAuth && !isBarberPro && !isBeautyPro && !isPublicBeauty && <InstallPrompt />}
     </>
   )
 }
