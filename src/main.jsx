@@ -5,7 +5,7 @@ import App from './App.jsx'
 
 // Заголовок вкладки зависит от того, какое приложение собрано (VITE_APP).
 document.title = import.meta.env.VITE_APP === 'beauty'
-  ? 'Beauty Booking — Казахстан'
+  ? 'Beauty — запись онлайн'
   : 'BarberBook'
 
 createRoot(document.getElementById('root')).render(

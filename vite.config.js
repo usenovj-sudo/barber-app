@@ -9,7 +9,7 @@ const isBeauty = process.env.VITE_APP === 'beauty'
 
 const appManifest = isBeauty
   ? {
-      name: 'Beauty Booking — Казахстан',
+      name: 'Beauty — запись онлайн',
       short_name: 'Beauty',
       description: 'Запись к мастеру красоты онлайн',
       theme_color: '#e11d48',
