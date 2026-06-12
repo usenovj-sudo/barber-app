@@ -8,7 +8,7 @@ export default function BeautyMasterRegister() {
   const navigate = useNavigate()
   const [form, setForm] = useState({
     name: '', phone: '', password: '',
-    specialization: 'nails', city: '', telegram: '',
+    specialization: 'nails', city: '',
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -66,16 +66,6 @@ export default function BeautyMasterRegister() {
             value={form.city}
             onChange={e => setForm({ ...form, city: e.target.value })}
             placeholder="Алматы"
-            className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 text-sm outline-none focus:border-rose-400"
-          />
-        </div>
-
-        <div>
-          <label className="text-sm font-semibold text-gray-700 mb-1 block">Telegram (необязательно)</label>
-          <input
-            value={form.telegram}
-            onChange={e => setForm({ ...form, telegram: e.target.value })}
-            placeholder="@your_username"
             className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 text-sm outline-none focus:border-rose-400"
           />
         </div>

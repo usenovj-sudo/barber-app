@@ -14,7 +14,7 @@ function write(key, data) {
 }
 
 export const beautyMasterAuth = {
-  register({ name, phone, password, specialization, city, telegram }) {
+  register({ name, phone, password, specialization, city }) {
     const p = normalizePhone(phone)
     if (p.length < 10) return { error: 'Введите корректный номер телефона' }
     if (!password || password.length < 4) return { error: 'Пароль минимум 4 символа' }
@@ -37,7 +37,6 @@ export const beautyMasterAuth = {
       phone: p,
       specialization: specialization || 'nails',
       city: city?.trim() || '',
-      telegram: telegram?.replace('@', '') || '',
       bio: '',
       photo: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=300&q=80',
       rating: 0,
@@ -45,7 +44,7 @@ export const beautyMasterAuth = {
       work_start: '09:00',
       work_end: '19:00',
       work_days: [1, 2, 3, 4, 5, 6],
-      deposit_amount: 0,
+      deposit_percent: 0,
       deposit_required: false,
       self_registered: true,
     }

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { masterStore, serviceStore, portfolioStore } from '../../../lib/beautyStore'
 import { DEMO_REVIEWS } from '../../../lib/beautyData'
 import { BEAUTY_CATEGORIES } from '../../../lib/beautyData'
-import { Star, MapPin, Phone, Send, Calendar, ChevronRight, ImageIcon } from 'lucide-react'
+import { Star, MapPin, Phone, Calendar, ChevronRight, ImageIcon } from 'lucide-react'
 
 function Stars({ rating }) {
   return (
@@ -79,29 +79,24 @@ export default function MasterPublicPage() {
           )}
 
           {/* Contact buttons */}
-          <div className="flex gap-2 mt-4">
-            {master.phone && (
+          {master.phone && (
+            <div className="mt-4">
               <a href={`tel:+${master.phone}`}
-                className="flex-1 flex items-center justify-center gap-2 bg-gray-50 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-700 font-medium">
+                className="flex items-center justify-center gap-2 bg-gray-50 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-700 font-medium">
                 <Phone size={15} /> Позвонить
               </a>
-            )}
-            {master.telegram && (
-              <a href={`https://t.me/${master.telegram}`} target="_blank" rel="noopener noreferrer"
-                className="flex-1 flex items-center justify-center gap-2 bg-sky-50 border border-sky-200 rounded-xl py-2.5 text-sm text-sky-600 font-medium">
-                <Send size={15} /> Telegram
-              </a>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Deposit notice */}
-      {master.deposit_required && master.deposit_amount > 0 && (
+      {master.deposit_required && master.deposit_percent > 0 && (
         <div className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-2xl p-4">
-          <p className="text-sm font-bold text-amber-800">💰 Запись с депозитом</p>
+          <p className="text-sm font-bold text-amber-800">💰 Запись с бронью {master.deposit_percent}%</p>
           <p className="text-xs text-amber-700 mt-1">
-            При записи потребуется внести депозит {master.deposit_amount.toLocaleString()} ₸ и прикрепить чек об оплате
+            Для подтверждения записи нужно оплатить {master.deposit_percent}% от стоимости услуги и загрузить чек.
+            Программа автоматически проверит сумму.
           </p>
         </div>
       )}

@@ -125,12 +125,15 @@ export default function BeautyDashboard() {
                 )}
 
                 {/* Deposit info */}
-                <div className={`mt-3 rounded-xl px-3 py-2 text-xs font-semibold flex items-center justify-between
-                  ${booking.deposit_status === 'paid' ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'}`}>
-                  <span>💰 Депозит: {booking.deposit_amount ? booking.deposit_amount.toLocaleString() + ' ₸' : 'не требуется'}</span>
-                  {booking.deposit_status === 'paid' && <span>✓ Оплачен</span>}
-                  {booking.deposit_status === 'pending' && booking.receipt_url && <span>Чек загружен</span>}
-                </div>
+                {booking.deposit_required && (
+                  <div className={`mt-3 rounded-xl px-3 py-2 text-xs font-semibold flex items-center justify-between
+                    ${booking.deposit_status === 'paid' ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'}`}>
+                    <span>💰 Бронь: {booking.deposit_amount ? booking.deposit_amount.toLocaleString() + ' ₸' : '—'}</span>
+                    {booking.deposit_status === 'paid' && (
+                      <span>✓ OCR подтверждено · {booking.deposit_paid?.toLocaleString()} ₸</span>
+                    )}
+                  </div>
+                )}
 
                 {/* Receipt button */}
                 {booking.receipt_url && (
@@ -148,8 +151,8 @@ export default function BeautyDashboard() {
                 )}
               </div>
 
-              {/* Action buttons */}
-              {isPending && (
+              {/* Action buttons — only for non-deposit bookings awaiting manual confirm */}
+              {isPending && !booking.deposit_required && (
                 <div className="border-t border-gray-100 grid grid-cols-2">
                   <button
                     onClick={() => reject(booking.id)}
