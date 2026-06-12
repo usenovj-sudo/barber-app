@@ -46,6 +46,10 @@ function BeautyMasterGuard({ children }) {
   return children
 }
 
+// Какое приложение открывается на корне "/". Задаётся переменной
+// окружения VITE_APP на Netlify: 'beauty' → beauty, иначе барбер.
+const APP_MODE = import.meta.env.VITE_APP === 'beauty' ? 'beauty' : 'barber'
+
 const BEAUTY_AUTH_PATHS = ['/beauty/pro/login', '/beauty/pro/register']
 const BARBER_AUTH_PATHS = ['/login', '/register', '/pro/login', '/pro/register']
 
@@ -66,7 +70,11 @@ function Shell() {
         <Route path="/login" element={<ClientLogin />} />
         <Route path="/register" element={<ClientRegister />} />
         <Route path="/m/:id" element={<MasterLink />} />
-        <Route path="/" element={<ClientGuard><Home /></ClientGuard>} />
+        <Route path="/" element={
+          APP_MODE === 'beauty'
+            ? <Navigate to="/beauty/pro" replace />
+            : <ClientGuard><Home /></ClientGuard>
+        } />
         <Route path="/salon/:id" element={<ClientGuard><SalonPage /></ClientGuard>} />
         <Route path="/master/:id" element={<ClientGuard><MasterPage /></ClientGuard>} />
         <Route path="/booking/:masterId" element={<ClientGuard><BookingPage /></ClientGuard>} />
