@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { beautyMasterAuth } from '../../../lib/beautyAuth'
 import { masterStore, serviceStore } from '../../../lib/beautyStore'
 import { BEAUTY_CATEGORIES } from '../../../lib/beautyData'
-import { Share2, Copy, Check, Plus, Pencil, Trash2, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Share2, Copy, Check, Plus, Pencil, Trash2, ToggleLeft, ToggleRight, MessageCircle } from 'lucide-react'
 
 const DURATIONS = [
   { v: 30, l: '30 мин' }, { v: 45, l: '45 мин' }, { v: 60, l: '1 час' },
@@ -24,6 +24,7 @@ export default function BeautyProfile() {
   const [pForm, setPForm] = useState({
     bio: '', deposit_percent: 20, deposit_required: false,
     work_start: '09:00', work_end: '19:00',
+    whatsapp_notify: false, whatsapp_apikey: '',
   })
 
   useEffect(() => {
@@ -42,6 +43,8 @@ export default function BeautyProfile() {
         deposit_required: m.deposit_required || false,
         work_start: m.work_start || '09:00',
         work_end: m.work_end || '19:00',
+        whatsapp_notify: m.whatsapp_notify || false,
+        whatsapp_apikey: m.whatsapp_apikey || '',
       })
     })()
     return () => { alive = false }
@@ -176,6 +179,40 @@ export default function BeautyProfile() {
                 <div className="bg-amber-50 rounded-xl px-3 py-2 text-xs text-amber-700">
                   Пример: услуга 5 000 ₸ → клиент платит бронь <strong>{exampleDeposit.toLocaleString()} ₸</strong>
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* WhatsApp-уведомления */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                <MessageCircle size={16} className="text-green-600" /> Уведомления в WhatsApp
+              </label>
+              <button onClick={() => setPForm({ ...pForm, whatsapp_notify: !pForm.whatsapp_notify })}
+                className={`relative w-12 h-6 rounded-full transition-colors ${pForm.whatsapp_notify ? 'bg-green-500' : 'bg-gray-300'}`}>
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${pForm.whatsapp_notify ? 'translate-x-6' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+
+            {pForm.whatsapp_notify && (
+              <div className="bg-white rounded-2xl p-4 border border-green-100 space-y-3">
+                <p className="text-xs text-gray-500">
+                  Получайте сообщение в WhatsApp при каждой новой записи. Нужно один раз подключить бесплатный сервис:
+                </p>
+                <ol className="text-xs text-gray-600 space-y-1 list-decimal list-inside">
+                  <li>Добавьте в контакты номер <strong>+34 644 51 95 23</strong></li>
+                  <li>Напишите ему в WhatsApp фразу: <strong>I allow callmebot to send me messages to chat</strong></li>
+                  <li>В ответ придёт ваш <strong>apikey</strong> — вставьте его в поле ниже</li>
+                </ol>
+                <input value={pForm.whatsapp_apikey}
+                  onChange={e => setPForm({ ...pForm, whatsapp_apikey: e.target.value.trim() })}
+                  placeholder="apikey из ответного сообщения"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-green-400" />
+                <p className="text-[11px] text-gray-400">
+                  Уведомление придёт на ваш номер{master?.phone ? ` +${master.phone}` : ''}.
+                  В приложении уведомления работают всегда — WhatsApp идёт дополнительно.
+                </p>
               </div>
             )}
           </div>

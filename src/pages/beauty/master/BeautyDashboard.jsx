@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { bookingStore } from '../../../lib/beautyStore'
+import { supabase } from '../../../lib/supabase'
 import { beautyMasterAuth } from '../../../lib/beautyAuth'
 import { format, isToday, isTomorrow, parseISO } from 'date-fns'
 import { ru } from 'date-fns/locale'
-import { Check, X, Eye, Clock, AlertCircle, CheckCircle, XCircle } from 'lucide-react'
+import { Check, X, Eye, Clock, AlertCircle, CheckCircle, XCircle, Bell } from 'lucide-react'
 
 const STATUS_CONFIG = {
   awaiting_confirmation: { label: 'Ожидает подтверждения', color: 'text-amber-600 bg-amber-50', icon: AlertCircle },
@@ -26,6 +27,7 @@ export default function BeautyDashboard() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('active')
   const [receiptModal, setReceiptModal] = useState(null)
+  const [toast, setToast] = useState(null)
 
   async function reload() {
     const data = await bookingStore.getForMaster(masterId)
@@ -44,8 +46,29 @@ export default function BeautyDashboard() {
     return () => { alive = false }
   }, [masterId])
 
+  // Живое уведомление о новой записи (Supabase Realtime)
+  useEffect(() => {
+    if (!masterId) return
+    const channel = supabase
+      .channel('beauty_bookings_' + masterId)
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'beauty_bookings', filter: `master_id=eq.${masterId}` },
+        payload => {
+          const b = payload.new
+          setBookings(prev => prev.some(x => x.id === b.id) ? prev : [b, ...prev])
+          setToast(b)
+          setTimeout(() => setToast(null), 7000)
+        })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [masterId])
+
   async function confirm(id) { await bookingStore.confirmBooking(id); reload() }
   async function reject(id) { await bookingStore.rejectBooking(id); reload() }
+  async function cancel(id) {
+    if (!window.confirm('Отменить эту запись? Клиент получит статус «Отменена».')) return
+    await bookingStore.cancel(id); reload()
+  }
 
   const today = new Date().toISOString().split('T')[0]
   const pending = bookings.filter(b => b.status === 'awaiting_confirmation')
@@ -60,10 +83,38 @@ export default function BeautyDashboard() {
 
   return (
     <div className="pb-24 bg-gray-50 min-h-screen">
+      {/* Живое уведомление о новой записи */}
+      {toast && (
+        <div className="fixed top-3 left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] max-w-[456px] z-[60]
+                        bg-gray-900 text-white rounded-2xl px-4 py-3 shadow-lg flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-rose-600 flex items-center justify-center flex-shrink-0">
+            <Bell size={18} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-sm leading-tight">Новая запись!</p>
+            <p className="text-xs text-gray-300 truncate">
+              {toast.client_name} · {toast.service_name} · {formatDate(toast.date)} {toast.start_time}
+            </p>
+          </div>
+          <button onClick={() => setToast(null)} className="text-gray-400 flex-shrink-0"><X size={18} /></button>
+        </div>
+      )}
+
       {/* Header */}
-      <div className="bg-white px-4 pt-12 pb-5 border-b border-gray-100">
-        <h1 className="text-xl font-bold text-gray-900">Мои записи</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Управление клиентами</p>
+      <div className="bg-white px-4 pt-12 pb-5 border-b border-gray-100 flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Мои записи</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Управление клиентами</p>
+        </div>
+        <button onClick={() => setFilter('pending')}
+          className="relative p-2 rounded-xl bg-gray-50 border border-gray-100 text-gray-600">
+          <Bell size={20} />
+          {pending.length > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-rose-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+              {pending.length}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Stats */}
@@ -186,6 +237,18 @@ export default function BeautyDashboard() {
                     className="flex items-center justify-center gap-2 py-3.5 text-green-600 font-bold text-sm"
                   >
                     <Check size={16} /> Подтвердить
+                  </button>
+                </div>
+              )}
+
+              {/* Подтверждённую запись (в т.ч. авто-бронь по депозиту) мастер может отменить */}
+              {booking.status === 'confirmed' && booking.date >= today && (
+                <div className="border-t border-gray-100">
+                  <button
+                    onClick={() => cancel(booking.id)}
+                    className="w-full flex items-center justify-center gap-2 py-3.5 text-red-500 font-semibold text-sm"
+                  >
+                    <X size={16} /> Отменить запись
                   </button>
                 </div>
               )}

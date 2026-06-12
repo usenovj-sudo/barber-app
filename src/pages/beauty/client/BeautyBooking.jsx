@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { masterStore, serviceStore, bookingStore, blockStore } from '../../../lib/beautyStore'
 import { BEAUTY_CATEGORIES } from '../../../lib/beautyData'
 import { scanReceipt } from '../../../lib/ocrReceipt'
+import { notifyMasterWhatsapp } from '../../../lib/notifyWhatsapp'
 import { format, addDays, startOfDay } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import { ChevronLeft, Upload, Check, X, ScanLine, AlertCircle, RefreshCw } from 'lucide-react'
@@ -77,8 +78,6 @@ export default function BeautyBooking() {
   const [scanState, setScanState] = useState(SCAN_IDLE)
   const [scanProgress, setScanProgress] = useState(0)
   const [scannedAmount, setScannedAmount] = useState(null)
-  const [manualAmount, setManualAmount] = useState('')
-  const [showManual, setShowManual] = useState(false)
 
   const [done, setDone] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -153,7 +152,6 @@ export default function BeautyBooking() {
       const dataUrl = ev.target.result
       setReceiptImg(dataUrl)
       setScannedAmount(null)
-      setShowManual(false)
       setScanState(SCAN_LOADING)
       setScanProgress(0)
       try {
@@ -180,12 +178,10 @@ export default function BeautyBooking() {
     setScanState(SCAN_IDLE)
     setScanProgress(0)
     setScannedAmount(null)
-    setManualAmount('')
-    setShowManual(false)
     if (receiptRef.current) receiptRef.current.value = ''
   }
 
-  const effectiveAmount = showManual ? Number(manualAmount) : scannedAmount
+  const effectiveAmount = scannedAmount
   const depositOk = !depositRequired || (effectiveAmount && effectiveAmount >= requiredDeposit)
 
   function canStep1() { return !!selectedService }
@@ -221,6 +217,13 @@ export default function BeautyBooking() {
       // Auto-confirmed when deposit OK, awaiting otherwise
       status: depositRequired ? 'confirmed' : 'awaiting_confirmation',
       comment,
+      })
+      // Уведомить мастера в WhatsApp, если он это включил (не блокирует запись)
+      notifyMasterWhatsapp(master, {
+        clientName: clientName.trim(),
+        serviceName: selectedService.name,
+        date: format(selectedDate, 'd MMM', { locale: ru }),
+        time: selectedTime,
       })
       setDone(true)
     } catch {
@@ -502,7 +505,7 @@ export default function BeautyBooking() {
                   </div>
                 )}
 
-                {/* Scan FAIL — OCR couldn't read */}
+                {/* Scan FAIL — не смогли прочитать чек, просим загрузить заново */}
                 {scanState === SCAN_FAIL && (
                   <div className="rounded-xl overflow-hidden border border-orange-200">
                     <div className="relative">
@@ -513,28 +516,20 @@ export default function BeautyBooking() {
                       </button>
                     </div>
                     <div className="bg-orange-50 p-3 space-y-2">
-                      <p className="text-sm font-semibold text-orange-700">Не удалось распознать сумму</p>
-                      <p className="text-xs text-orange-600">Введите сумму перевода вручную:</p>
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          value={manualAmount}
-                          onChange={e => { setManualAmount(e.target.value); setShowManual(true) }}
-                          placeholder={requiredDeposit.toString()}
-                          className="flex-1 border border-orange-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-rose-400"
-                        />
-                        <span className="flex items-center text-sm font-semibold text-gray-600 pr-1">₸</span>
+                      <div className="flex items-start gap-2">
+                        <AlertCircle size={16} className="text-orange-500 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-sm font-bold text-orange-700">Не удалось прочитать чек</p>
+                          <p className="text-xs text-orange-600">
+                            Загрузите чек об оплате повторно. Лучше всего — готовый чек из приложения банка
+                            (Kaspi, Halyk, Forte), а не размытое фото экрана.
+                          </p>
+                        </div>
                       </div>
-                      {showManual && Number(manualAmount) < requiredDeposit && Number(manualAmount) > 0 && (
-                        <p className="text-xs text-red-500">
-                          Минимальная бронь: {requiredDeposit.toLocaleString()} ₸
-                        </p>
-                      )}
-                      {showManual && Number(manualAmount) >= requiredDeposit && (
-                        <p className="text-xs text-green-600 font-semibold">
-                          ✓ Сумма подтверждена
-                        </p>
-                      )}
+                      <button onClick={resetReceipt}
+                        className="w-full flex items-center justify-center gap-2 bg-white border border-orange-200 rounded-xl py-2.5 text-sm text-orange-600 font-semibold">
+                        <RefreshCw size={14} /> Загрузить чек повторно
+                      </button>
                     </div>
                   </div>
                 )}
