@@ -36,7 +36,7 @@ export const beautyMasterAuth = {
       p_username: username,
     })
 
-    if (error) return { error: 'Ошибка подключения к серверу. Попробуйте ещё раз.' }
+    if (error) return { error: 'Сервер: ' + (error.message || error.code || 'нет связи') + (error.code ? ` [${error.code}]` : '') }
     if (data?.error) return { error: data.error }
 
     const session = buildSession(data)
@@ -52,7 +52,7 @@ export const beautyMasterAuth = {
       p_password: password,
     })
 
-    if (error) return { error: 'Ошибка подключения к серверу. Попробуйте ещё раз.' }
+    if (error) return { error: 'Сервер: ' + (error.message || error.code || 'нет связи') + (error.code ? ` [${error.code}]` : '') }
     if (data?.error) return { error: data.error }
 
     const session = buildSession(data)
