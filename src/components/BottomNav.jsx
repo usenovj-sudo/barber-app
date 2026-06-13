@@ -1,17 +1,36 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import { Home, Calendar, User, Briefcase, ImageIcon, LayoutDashboard } from 'lucide-react'
+import { Home, Calendar, User, Briefcase, ImageIcon, LayoutDashboard, Search } from 'lucide-react'
 
 export default function BottomNav() {
   const location = useLocation()
   const path = location.pathname
 
-  const isBeautyPro = path.startsWith('/beauty/pro')
-  const isBarberPro = path.startsWith('/pro')
+  const isBeautyPro    = path.startsWith('/beauty/pro')
+  const isBarberPro    = path.startsWith('/pro')
+  const isBeautyClient = path.startsWith('/client') && !path.includes('/login') && !path.includes('/register')
 
   const navCls = (active, accent = false) =>
     `flex-1 flex flex-col items-center py-3 text-xs gap-1 transition-colors ${
       active ? (accent ? 'text-rose-600' : 'text-[#1a1a2e]') : 'text-gray-400'
     }`
+
+  // Beauty client navigation
+  if (isBeautyClient) {
+    return (
+      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] bg-white border-t border-gray-200 flex z-50"
+           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <NavLink to="/client" end className={({ isActive }) => navCls(isActive, true)}>
+          <Search size={22} /><span>Поиск</span>
+        </NavLink>
+        <NavLink to="/client/bookings" className={({ isActive }) => navCls(isActive, true)}>
+          <Calendar size={22} /><span>Записи</span>
+        </NavLink>
+        <NavLink to="/client/profile" className={({ isActive }) => navCls(isActive, true)}>
+          <User size={22} /><span>Профиль</span>
+        </NavLink>
+      </nav>
+    )
+  }
 
   // Beauty master navigation
   if (isBeautyPro) {

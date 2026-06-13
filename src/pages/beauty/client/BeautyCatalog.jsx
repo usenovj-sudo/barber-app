@@ -19,7 +19,7 @@ function formatDist(km) {
   return km.toFixed(1) + ' км'
 }
 
-export default function BeautyCatalog() {
+export default function BeautyCatalog({ clientMode = false }) {
   const navigate = useNavigate()
   const [masters, setMasters] = useState([])
   const [loading, setLoading] = useState(true)
@@ -96,12 +96,18 @@ export default function BeautyCatalog() {
               <p className="text-xs text-gray-400 leading-tight">Запись онлайн</p>
             </div>
           </div>
-          <button
-            onClick={() => navigate('/beauty/pro/login')}
-            className="text-xs text-rose-600 font-semibold px-3 py-1.5 border border-rose-200 rounded-xl bg-rose-50"
-          >
-            Я мастер →
-          </button>
+          {!clientMode && (
+            <div className="flex flex-col gap-1 items-end">
+              <button onClick={() => navigate('/beauty/pro/login')}
+                className="text-xs text-rose-600 font-semibold px-3 py-1.5 border border-rose-200 rounded-xl bg-rose-50">
+                Я мастер →
+              </button>
+              <button onClick={() => navigate('/client/login')}
+                className="text-xs text-gray-500 underline">
+                Войти как клиент
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Поиск */}

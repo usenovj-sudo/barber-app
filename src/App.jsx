@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { clientAuth, masterAuth } from './lib/auth'
 import { beautyMasterAuth } from './lib/beautyAuth'
+import { beautyClientAuth } from './lib/beautyClientAuth'
 import BottomNav from './components/BottomNav'
 import InstallPrompt from './components/InstallPrompt'
 
@@ -28,10 +29,14 @@ import BeautyDashboard from './pages/beauty/master/BeautyDashboard'
 import BeautyProfile from './pages/beauty/master/BeautyProfile'
 import BeautyPortfolio from './pages/beauty/master/BeautyPortfolio'
 
-// ── Beauty client (public, no auth) ─────────────────────────
+// ── Beauty client ────────────────────────────────────────────
 import BeautyCatalog from './pages/beauty/client/BeautyCatalog'
 import MasterPublicPage from './pages/beauty/client/MasterPublicPage'
 import BeautyBooking from './pages/beauty/client/BeautyBooking'
+import BeautyClientLogin from './pages/beauty/client/BeautyClientLogin'
+import BeautyClientRegister from './pages/beauty/client/BeautyClientRegister'
+import BeautyClientBookings from './pages/beauty/client/BeautyClientBookings'
+import BeautyClientProfile from './pages/beauty/client/BeautyClientProfile'
 
 // ── Guards ───────────────────────────────────────────────────
 function ClientGuard({ children }) {
@@ -46,23 +51,30 @@ function BeautyMasterGuard({ children }) {
   if (!beautyMasterAuth.current()) return <Navigate to="/beauty/pro/login" replace />
   return children
 }
+function BeautyClientGuard({ children }) {
+  if (!beautyClientAuth.current()) return <Navigate to="/client/login" replace />
+  return children
+}
 
-// Какое приложение открывается на корне "/". Задаётся переменной
-// окружения VITE_APP на Netlify: 'beauty' → beauty, иначе барбер.
+// Какое приложение открывается на корне "/".
 const APP_MODE = import.meta.env.VITE_APP === 'beauty' ? 'beauty' : 'barber'
 
-const BEAUTY_AUTH_PATHS = ['/beauty/pro/login', '/beauty/pro/register']
-const BARBER_AUTH_PATHS = ['/login', '/register', '/pro/login', '/pro/register']
+const BEAUTY_AUTH_PATHS        = ['/beauty/pro/login', '/beauty/pro/register']
+const BEAUTY_CLIENT_AUTH_PATHS = ['/client/login', '/client/register']
+const BARBER_AUTH_PATHS        = ['/login', '/register', '/pro/login', '/pro/register']
 
 function Shell() {
   const location = useLocation()
   const path = location.pathname
-  const isBarberAuth = BARBER_AUTH_PATHS.includes(path)
-  const isBeautyAuth = BEAUTY_AUTH_PATHS.includes(path)
-  const isPublicBeauty = path.startsWith('/b/') || (APP_MODE === 'beauty' && path === '/')
-  const isBeautyPro = path.startsWith('/beauty/pro')
-  const isBarberPro = path.startsWith('/pro')
-  const isAnyAuth = isBarberAuth || isBeautyAuth
+
+  const isBarberAuth       = BARBER_AUTH_PATHS.includes(path)
+  const isBeautyAuth       = BEAUTY_AUTH_PATHS.includes(path)
+  const isBeautyClientAuth = BEAUTY_CLIENT_AUTH_PATHS.includes(path)
+  const isPublicBeauty     = path.startsWith('/b/') || (APP_MODE === 'beauty' && path === '/')
+  const isBeautyPro        = path.startsWith('/beauty/pro')
+  const isBarberPro        = path.startsWith('/pro')
+  const isBeautyClient     = path.startsWith('/client') && !isBeautyClientAuth
+  const isAnyAuth          = isBarberAuth || isBeautyAuth || isBeautyClientAuth
 
   return (
     <>
@@ -95,6 +107,13 @@ function Shell() {
         <Route path="/beauty/pro/profile" element={<BeautyMasterGuard><BeautyProfile /></BeautyMasterGuard>} />
         <Route path="/beauty/pro/portfolio" element={<BeautyMasterGuard><BeautyPortfolio /></BeautyMasterGuard>} />
 
+        {/* ── Beauty client (auth) ── */}
+        <Route path="/client/login" element={<BeautyClientLogin />} />
+        <Route path="/client/register" element={<BeautyClientRegister />} />
+        <Route path="/client" element={<BeautyClientGuard><BeautyCatalog clientMode /></BeautyClientGuard>} />
+        <Route path="/client/bookings" element={<BeautyClientGuard><BeautyClientBookings /></BeautyClientGuard>} />
+        <Route path="/client/profile" element={<BeautyClientGuard><BeautyClientProfile /></BeautyClientGuard>} />
+
         {/* ── Beauty public (no auth) ── */}
         <Route path="/b/:masterId" element={<MasterPublicPage />} />
         <Route path="/b/:masterId/book" element={<BeautyBooking />} />
@@ -103,7 +122,7 @@ function Shell() {
       </Routes>
 
       {!isAnyAuth && !isPublicBeauty && <BottomNav />}
-      {!isAnyAuth && !isBarberPro && !isBeautyPro && !isPublicBeauty && <InstallPrompt />}
+      {!isAnyAuth && !isBarberPro && !isBeautyPro && !isPublicBeauty && !isBeautyClient && <InstallPrompt />}
     </>
   )
 }
