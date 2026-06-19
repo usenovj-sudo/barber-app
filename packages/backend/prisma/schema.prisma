@@ -1,0 +1,612 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── CORE ─────────────────────────────────────────────────────────────────
+
+model Cafe {
+  id        String   @id @default(cuid())
+  name      String
+  address   String
+  timezone  String   @default("Asia/Almaty")
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  users            User[]
+  clients          Client[]
+  categories       Category[]
+  dishes           Dish[]
+  ingredients      Ingredient[]
+  halls            Hall[]
+  tables           Table[]
+  orders           Order[]
+  shifts           Shift[]
+  reservations     Reservation[]
+  purchaseRequests PurchaseRequest[]
+  procurementRuns  ProcurementRun[]
+  financialRecords FinancialRecord[]
+  aiReports        AiReport[]
+  auditLogs        AuditLog[]
+  prizes           Prize[]
+  cafeSuppliers    CafeSupplier[]
+  aiSettings       CafeAiSettings?
+}
+
+model CafeAiSettings {
+  id                    String  @id @default(cuid())
+  cafeId                String  @unique
+  cafe                  Cafe    @relation(fields: [cafeId], references: [id])
+  procurementLevel      Int     @default(1)
+  maxAutoOrderAmount    Decimal @default(50000) @db.Decimal(12, 2)
+  defaultSafetyStockPct Decimal @default(25) @db.Decimal(5, 2)
+  defaultLeadTimeDays   Int     @default(2)
+  isEnabled             Boolean @default(false)
+}
+
+model User {
+  id           String   @id @default(cuid())
+  cafeId       String
+  cafe         Cafe     @relation(fields: [cafeId], references: [id])
+  role         UserRole
+  name         String
+  phone        String?
+  email        String
+  passwordHash String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  orders    Order[]    @relation("WaiterOrders")
+  shifts    Shift[]
+  auditLogs AuditLog[]
+
+  @@unique([email, cafeId])
+}
+
+enum UserRole {
+  ADMIN
+  WAITER
+  CASHIER
+  COOK
+  HOSTESS
+}
+
+model Client {
+  id           String    @id @default(cuid())
+  cafeId       String
+  cafe         Cafe      @relation(fields: [cafeId], references: [id])
+  name         String
+  phone        String?
+  email        String?
+  birthdate    DateTime?
+  preferences  String?
+  referralCode String?   @unique
+  referredById String?
+  createdAt    DateTime  @default(now())
+
+  orders         Order[]
+  reservations   Reservation[]
+  loyaltyAccount LoyaltyAccount?
+}
+
+// ─── INVENTORY ────────────────────────────────────────────────────────────
+
+model Category {
+  id        String @id @default(cuid())
+  cafeId    String
+  cafe      Cafe   @relation(fields: [cafeId], references: [id])
+  name      String
+  sortOrder Int    @default(0)
+
+  dishes Dish[]
+}
+
+model Ingredient {
+  id            String   @id @default(cuid())
+  cafeId        String
+  cafe          Cafe     @relation(fields: [cafeId], references: [id])
+  name          String
+  unit          String
+  stockQty      Decimal  @default(0) @db.Decimal(12, 4)
+  pricePerUnit  Decimal  @default(0) @db.Decimal(12, 2)
+  minStockLevel Decimal  @default(0) @db.Decimal(12, 4)
+  updatedAt     DateTime @updatedAt
+
+  recipeItems          RecipeItem[]
+  purchaseRequestItems PurchaseRequestItem[]
+  invoiceItems         InvoiceItem[]
+  supplierLinks        SupplierIngredientLink[]
+  procurementSettings  IngredientProcurementSettings?
+  agentPreferences     AgentSupplierPreference[]
+}
+
+model IngredientProcurementSettings {
+  id                  String     @id @default(cuid())
+  ingredientId        String     @unique
+  ingredient          Ingredient @relation(fields: [ingredientId], references: [id])
+  parLevel            Decimal    @db.Decimal(12, 4)
+  reorderPoint        Decimal?   @db.Decimal(12, 4)
+  leadTimeDays        Int        @default(2)
+  safetyStockPct      Decimal    @default(25) @db.Decimal(5, 2)
+  isPerishable        Boolean    @default(false)
+  preferredSupplierId String?
+}
+
+model Dish {
+  id          String    @id @default(cuid())
+  cafeId      String
+  cafe        Cafe      @relation(fields: [cafeId], references: [id])
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  name        String
+  description String?
+  photoUrl    String?
+  price       Decimal   @db.Decimal(12, 2)
+  isAvailable Boolean   @default(true)
+  section     String?
+
+  recipes    Recipe[]
+  orderItems OrderItem[]
+  modifiers  Modifier[]
+}
+
+model Recipe {
+  id        String   @id @default(cuid())
+  dishId    String
+  dish      Dish     @relation(fields: [dishId], references: [id])
+  version   Int      @default(1)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  items RecipeItem[]
+}
+
+model RecipeItem {
+  id                 String     @id @default(cuid())
+  recipeId           String
+  recipe             Recipe     @relation(fields: [recipeId], references: [id])
+  ingredientId       String
+  ingredient         Ingredient @relation(fields: [ingredientId], references: [id])
+  quantity           Decimal    @db.Decimal(12, 4)
+  parentIngredientId String?
+}
+
+model Modifier {
+  id         String  @id @default(cuid())
+  dishId     String
+  dish       Dish    @relation(fields: [dishId], references: [id])
+  name       String
+  priceDelta Decimal @default(0) @db.Decimal(12, 2)
+}
+
+// ─── FLOOR PLAN ───────────────────────────────────────────────────────────
+
+model Hall {
+  id     String @id @default(cuid())
+  cafeId String
+  cafe   Cafe   @relation(fields: [cafeId], references: [id])
+  name   String
+
+  tables Table[]
+}
+
+model Table {
+  id       String      @id @default(cuid())
+  cafeId   String
+  cafe     Cafe        @relation(fields: [cafeId], references: [id])
+  hallId   String?
+  hall     Hall?       @relation(fields: [hallId], references: [id])
+  number   Int
+  capacity Int         @default(4)
+  qrCode   String      @unique
+  status   TableStatus @default(FREE)
+
+  orders       Order[]
+  reservations Reservation[]
+
+  @@unique([cafeId, number])
+}
+
+enum TableStatus {
+  FREE
+  OCCUPIED
+  WAITING_PAYMENT
+  RESERVED
+}
+
+// ─── ORDERS ───────────────────────────────────────────────────────────────
+
+model Order {
+  id          String      @id @default(cuid())
+  cafeId      String
+  cafe        Cafe        @relation(fields: [cafeId], references: [id])
+  tableId     String?
+  table       Table?      @relation(fields: [tableId], references: [id])
+  clientId    String?
+  client      Client?     @relation(fields: [clientId], references: [id])
+  waiterId    String?
+  waiter      User?       @relation("WaiterOrders", fields: [waiterId], references: [id])
+  source      OrderSource @default(WAITER)
+  status      OrderStatus @default(PENDING)
+  totalAmount Decimal     @default(0) @db.Decimal(12, 2)
+  costPrice   Decimal     @default(0) @db.Decimal(12, 2)
+  note        String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  items            OrderItem[]
+  payment          Payment?
+  financialRecords FinancialRecord[]
+}
+
+enum OrderSource {
+  WAITER
+  QR_TABLE
+  WEB_FORM
+  CUSTOMER_APP
+}
+
+enum OrderStatus {
+  PENDING
+  IN_KITCHEN
+  READY
+  SERVED
+  PAID
+  CANCELLED
+}
+
+model OrderItem {
+  id             String          @id @default(cuid())
+  orderId        String
+  order          Order           @relation(fields: [orderId], references: [id])
+  dishId         String
+  dish           Dish            @relation(fields: [dishId], references: [id])
+  recipeId       String
+  guestTag       String?
+  serveGroupId   String?
+  quantity       Int             @default(1)
+  price          Decimal         @db.Decimal(12, 2)
+  costPrice      Decimal         @default(0) @db.Decimal(12, 2)
+  modifiers      Json            @default("[]")
+  comment        String?
+  status         OrderItemStatus @default(PENDING)
+}
+
+enum OrderItemStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+// ─── PAYMENTS & SHIFTS ────────────────────────────────────────────────────
+
+model Payment {
+  id                String        @id @default(cuid())
+  orderId           String        @unique
+  order             Order         @relation(fields: [orderId], references: [id])
+  method            PaymentMethod
+  amount            Decimal       @db.Decimal(12, 2)
+  loyaltyPointsUsed Int           @default(0)
+  discountAmount    Decimal       @default(0) @db.Decimal(12, 2)
+  createdAt         DateTime      @default(now())
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  QR
+  LOYALTY
+  MIXED
+}
+
+model Shift {
+  id             String    @id @default(cuid())
+  cafeId         String
+  cafe           Cafe      @relation(fields: [cafeId], references: [id])
+  cashierId      String
+  cashier        User      @relation(fields: [cashierId], references: [id])
+  openedAt       DateTime  @default(now())
+  closedAt       DateTime?
+  openingBalance Decimal   @default(0) @db.Decimal(12, 2)
+  closingBalance Decimal?  @db.Decimal(12, 2)
+  expectedAmount Decimal?  @db.Decimal(12, 2)
+  actualAmount   Decimal?  @db.Decimal(12, 2)
+  discrepancy    Decimal?  @db.Decimal(12, 2)
+  notes          String?
+}
+
+// ─── BOOKINGS ─────────────────────────────────────────────────────────────
+
+model Reservation {
+  id          String            @id @default(cuid())
+  cafeId      String
+  cafe        Cafe              @relation(fields: [cafeId], references: [id])
+  clientId    String?
+  client      Client?           @relation(fields: [clientId], references: [id])
+  tableId     String
+  table       Table             @relation(fields: [tableId], references: [id])
+  date        DateTime
+  guestsCount Int
+  deposit     Decimal           @default(0) @db.Decimal(12, 2)
+  status      ReservationStatus @default(PENDING)
+  note        String?
+  isBanquet   Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  SEATED
+  COMPLETED
+  CANCELLED
+}
+
+// ─── SUPPLIERS & B2B ──────────────────────────────────────────────────────
+
+model Supplier {
+  id          String   @id @default(cuid())
+  name        String
+  contactInfo String?
+  region      String?
+  rating      Decimal  @default(0) @db.Decimal(3, 2)
+  reviewCount Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  products             SupplierProduct[]
+  cafeSuppliers        CafeSupplier[]
+  ingredientLinks      SupplierIngredientLink[]
+  purchaseRequestItems PurchaseRequestItem[]
+  invoices             Invoice[]
+  reviews              SupplierReview[]
+  agentPreferences     AgentSupplierPreference[]
+}
+
+model CafeSupplier {
+  id         String   @id @default(cuid())
+  cafeId     String
+  cafe       Cafe     @relation(fields: [cafeId], references: [id])
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  isFavorite Boolean  @default(false)
+  addedAt    DateTime @default(now())
+
+  @@unique([cafeId, supplierId])
+}
+
+model SupplierProduct {
+  id          String   @id @default(cuid())
+  supplierId  String
+  supplier    Supplier @relation(fields: [supplierId], references: [id])
+  name        String
+  unit        String
+  price       Decimal  @db.Decimal(12, 2)
+  minOrderQty Decimal  @default(0) @db.Decimal(12, 4)
+  category    String?
+  photoUrl    String?
+  description String?
+  isAvailable Boolean  @default(true)
+  stockQty    Decimal? @db.Decimal(12, 4)
+
+  ingredientLinks SupplierIngredientLink[]
+}
+
+model SupplierIngredientLink {
+  id                String          @id @default(cuid())
+  cafeId            String
+  ingredientId      String
+  ingredient        Ingredient      @relation(fields: [ingredientId], references: [id])
+  supplierId        String
+  supplier          Supplier        @relation(fields: [supplierId], references: [id])
+  supplierProductId String
+  supplierProduct   SupplierProduct @relation(fields: [supplierProductId], references: [id])
+  isVerified        Boolean         @default(false)
+
+  @@unique([cafeId, ingredientId, supplierProductId])
+}
+
+model AgentSupplierPreference {
+  id              String     @id @default(cuid())
+  cafeId          String
+  ingredientId    String
+  ingredient      Ingredient @relation(fields: [ingredientId], references: [id])
+  supplierId      String
+  supplier        Supplier   @relation(fields: [supplierId], references: [id])
+  preferenceScore Decimal    @default(50) @db.Decimal(5, 2)
+  lastUsedAt      DateTime?
+  notes           String?
+
+  @@unique([cafeId, ingredientId, supplierId])
+}
+
+model ProcurementRun {
+  id           String   @id @default(cuid())
+  cafeId       String
+  cafe         Cafe     @relation(fields: [cafeId], references: [id])
+  triggeredBy  String
+  triggeredAt  DateTime @default(now())
+  analysisData Json
+  agentOutput  Json
+
+  requests PurchaseRequest[]
+}
+
+model PurchaseRequest {
+  id               String                @id @default(cuid())
+  cafeId           String
+  cafe             Cafe                  @relation(fields: [cafeId], references: [id])
+  procurementRunId String?
+  procurementRun   ProcurementRun?       @relation(fields: [procurementRunId], references: [id])
+  aiGenerated      Boolean               @default(false)
+  aiJustification  String?
+  status           PurchaseRequestStatus @default(DRAFT)
+  approvedBy       String?
+  approvedAt       DateTime?
+  sentAt           DateTime?
+  rejectionReason  String?
+  adminEdits       Json?
+  totalAmount      Decimal?              @db.Decimal(12, 2)
+  createdAt        DateTime              @default(now())
+
+  items PurchaseRequestItem[]
+}
+
+enum PurchaseRequestStatus {
+  DRAFT
+  PENDING_APPROVAL
+  SENT
+  QUOTED
+  CONFIRMED
+  DELIVERED
+  REJECTED
+  CANCELLED
+}
+
+model PurchaseRequestItem {
+  id               String          @id @default(cuid())
+  requestId        String
+  request          PurchaseRequest @relation(fields: [requestId], references: [id])
+  ingredientId     String
+  ingredient       Ingredient      @relation(fields: [ingredientId], references: [id])
+  quantity         Decimal         @db.Decimal(12, 4)
+  supplierId       String?
+  supplier         Supplier?       @relation(fields: [supplierId], references: [id])
+  unitPrice        Decimal?        @db.Decimal(12, 2)
+  confirmed        Boolean         @default(false)
+  aiScore          Decimal?        @db.Decimal(5, 2)
+  aiReasoning      String?
+  alternativeQuotes Json?
+  adminOverride    Boolean         @default(false)
+}
+
+model Invoice {
+  id         String      @id @default(cuid())
+  type       InvoiceType
+  cafeId     String
+  supplierId String
+  supplier   Supplier    @relation(fields: [supplierId], references: [id])
+  total      Decimal     @default(0) @db.Decimal(12, 2)
+  createdAt  DateTime    @default(now())
+
+  items InvoiceItem[]
+}
+
+enum InvoiceType {
+  INBOUND
+  OUTBOUND
+}
+
+model InvoiceItem {
+  id           String     @id @default(cuid())
+  invoiceId    String
+  invoice      Invoice    @relation(fields: [invoiceId], references: [id])
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  quantity     Decimal    @db.Decimal(12, 4)
+  unitPrice    Decimal    @db.Decimal(12, 2)
+}
+
+model SupplierReview {
+  id                String   @id @default(cuid())
+  cafeId            String
+  supplierId        String
+  supplier          Supplier @relation(fields: [supplierId], references: [id])
+  purchaseRequestId String?
+  rating            Int
+  comment           String?
+  createdAt         DateTime @default(now())
+}
+
+// ─── LOYALTY ──────────────────────────────────────────────────────────────
+
+model LoyaltyAccount {
+  id         String      @id @default(cuid())
+  clientId   String      @unique
+  client     Client      @relation(fields: [clientId], references: [id])
+  points     Int         @default(0)
+  tier       LoyaltyTier @default(BRONZE)
+  totalSpent Decimal     @default(0) @db.Decimal(12, 2)
+
+  transactions LoyaltyTransaction[]
+}
+
+enum LoyaltyTier {
+  BRONZE
+  SILVER
+  GOLD
+}
+
+model LoyaltyTransaction {
+  id               String         @id @default(cuid())
+  loyaltyAccountId String
+  loyaltyAccount   LoyaltyAccount @relation(fields: [loyaltyAccountId], references: [id])
+  cafeId           String
+  orderId          String?
+  type             LoyaltyTxType
+  points           Int
+  expiresAt        DateTime?
+  createdAt        DateTime       @default(now())
+}
+
+enum LoyaltyTxType {
+  EARN
+  SPEND
+  BONUS
+  REFERRAL
+  EXPIRY
+}
+
+model Prize {
+  id          String  @id @default(cuid())
+  cafeId      String
+  cafe        Cafe    @relation(fields: [cafeId], references: [id])
+  name        String
+  pointsCost  Int
+  description String?
+  isActive    Boolean @default(true)
+}
+
+// ─── ANALYTICS & AI ───────────────────────────────────────────────────────
+
+model FinancialRecord {
+  id        String   @id @default(cuid())
+  cafeId    String
+  cafe      Cafe     @relation(fields: [cafeId], references: [id])
+  orderId   String?
+  order     Order?   @relation(fields: [orderId], references: [id])
+  type      String
+  amount    Decimal  @db.Decimal(12, 2)
+  costPrice Decimal  @default(0) @db.Decimal(12, 2)
+  margin    Decimal  @default(0) @db.Decimal(12, 2)
+  date      DateTime @default(now())
+}
+
+model AiReport {
+  id         String    @id @default(cuid())
+  cafeId     String
+  cafe       Cafe      @relation(fields: [cafeId], references: [id])
+  reportType String
+  inputData  Json
+  result     Json
+  approvedBy String?
+  approvedAt DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  cafeId    String
+  cafe      Cafe     @relation(fields: [cafeId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String
+  diff      Json?
+  createdAt DateTime @default(now())
+}
