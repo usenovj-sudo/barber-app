@@ -12,6 +12,9 @@ import { PaymentsModule } from './payments/payments.module';
 import { AiModule } from './ai/ai.module';
 import { ProcurementModule } from './procurement/procurement.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
+import { ClientsModule } from './clients/clients.module';
+import { LoyaltyModule } from './loyalty/loyalty.module';
+import { ReservationsModule } from './reservations/reservations.module';
 
 @Module({
   imports: [
@@ -28,6 +31,9 @@ import { SuppliersModule } from './suppliers/suppliers.module';
     AiModule,
     ProcurementModule,
     SuppliersModule,
+    ClientsModule,
+    LoyaltyModule,
+    ReservationsModule,
   ],
 })
 export class AppModule {}
