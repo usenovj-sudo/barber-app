@@ -7,6 +7,8 @@ import { MenuModule } from './menu/menu.module';
 import { KitchenModule } from './kitchen/kitchen.module';
 import { OrdersModule } from './orders/orders.module';
 import { PublicModule } from './public/public.module';
+import { ShiftsModule } from './shifts/shifts.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { PublicModule } from './public/public.module';
     KitchenModule,
     OrdersModule,
     PublicModule,
+    ShiftsModule,
+    PaymentsModule,
   ],
 })
 export class AppModule {}
