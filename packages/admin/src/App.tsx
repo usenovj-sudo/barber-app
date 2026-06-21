@@ -7,6 +7,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { MenuPage } from './pages/MenuPage';
 import { AuditPage } from './pages/AuditPage';
+import { KitchenPage } from './pages/KitchenPage';
 
 function Protected({ children }: { children: JSX.Element }) {
   const { user } = useAuth();
@@ -18,6 +19,15 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/* Fullscreen kitchen display — no admin chrome */}
+      <Route
+        path="/kitchen"
+        element={
+          <Protected>
+            <KitchenPage />
+          </Protected>
+        }
+      />
       <Route
         path="/"
         element={
