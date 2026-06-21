@@ -20,4 +20,5 @@ packages/backend/src/generated/
 *.njsproj
 *.sln
 *.sw?
-packages/backend/tsconfig.tsbuildinfo
+# TypeScript incremental build cache (all packages)
+*.tsbuildinfo
