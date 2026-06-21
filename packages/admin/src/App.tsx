@@ -10,6 +10,7 @@ import { AuditPage } from './pages/AuditPage';
 import { KitchenPage } from './pages/KitchenPage';
 import { PosTablesPage } from './pages/PosTablesPage';
 import { PosOrderPage } from './pages/PosOrderPage';
+import { GuestMenuPage } from './pages/GuestMenuPage';
 
 function Protected({ children }: { children: JSX.Element }) {
   const { user } = useAuth();
@@ -21,6 +22,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/* Public guest QR ordering — no auth */}
+      <Route path="/order/:qrCode" element={<GuestMenuPage />} />
       {/* Fullscreen kitchen display — no admin chrome */}
       <Route
         path="/kitchen"
