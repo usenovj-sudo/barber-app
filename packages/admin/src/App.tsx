@@ -8,6 +8,8 @@ import { InventoryPage } from './pages/InventoryPage';
 import { MenuPage } from './pages/MenuPage';
 import { AuditPage } from './pages/AuditPage';
 import { KitchenPage } from './pages/KitchenPage';
+import { PosTablesPage } from './pages/PosTablesPage';
+import { PosOrderPage } from './pages/PosOrderPage';
 
 function Protected({ children }: { children: JSX.Element }) {
   const { user } = useAuth();
@@ -37,6 +39,8 @@ export default function App() {
         }
       >
         <Route index element={<DashboardPage />} />
+        <Route path="pos" element={<PosTablesPage />} />
+        <Route path="pos/table/:tableId" element={<PosOrderPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="inventory" element={<InventoryPage />} />
         <Route path="menu" element={<MenuPage />} />

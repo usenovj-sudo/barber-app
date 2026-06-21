@@ -3,6 +3,7 @@ import { useAuth } from '../lib/auth';
 
 const NAV = [
   { to: '/', label: 'Дашборд', end: true },
+  { to: '/pos', label: '🪑 Залы / Касса' },
   { to: '/reports', label: 'Отчёты' },
   { to: '/inventory', label: 'Склад' },
   { to: '/menu', label: 'Меню' },

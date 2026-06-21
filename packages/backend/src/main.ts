@@ -4,6 +4,7 @@ import { ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { DecimalInterceptor } from './common/decimal.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -20,8 +21,11 @@ async function bootstrap() {
     }),
   );
 
-  // Serialize class instances in responses
-  app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
+  // Serialize class instances + normalize Prisma Decimal → number in responses
+  app.useGlobalInterceptors(
+    new ClassSerializerInterceptor(app.get(Reflector)),
+    new DecimalInterceptor(),
+  );
 
   // CORS — tighten origins in production
   app.enableCors({
