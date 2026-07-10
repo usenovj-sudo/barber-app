@@ -4,8 +4,11 @@ import { useAuth } from '../lib/auth';
 const NAV = [
   { to: '/', label: 'Дашборд', end: true },
   { to: '/pos', label: '🪑 Залы / Касса' },
+  { to: '/shifts', label: 'Смены кассы' },
   { to: '/reservations', label: 'Брони' },
   { to: '/clients', label: 'Клиенты' },
+  { to: '/procurement', label: '🤖 Закупки' },
+  { to: '/suppliers', label: 'Поставщики' },
   { to: '/reports', label: 'Отчёты' },
   { to: '/inventory', label: 'Склад' },
   { to: '/menu', label: 'Меню' },

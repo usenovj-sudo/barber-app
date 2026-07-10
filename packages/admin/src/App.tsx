@@ -13,6 +13,9 @@ import { PosOrderPage } from './pages/PosOrderPage';
 import { GuestMenuPage } from './pages/GuestMenuPage';
 import { ClientsPage } from './pages/ClientsPage';
 import { ReservationsPage } from './pages/ReservationsPage';
+import { ProcurementPage } from './pages/ProcurementPage';
+import { SuppliersPage } from './pages/SuppliersPage';
+import { ShiftsPage } from './pages/ShiftsPage';
 
 function Protected({ children }: { children: JSX.Element }) {
   const { user } = useAuth();
@@ -48,6 +51,9 @@ export default function App() {
         <Route path="pos/table/:tableId" element={<PosOrderPage />} />
         <Route path="reservations" element={<ReservationsPage />} />
         <Route path="clients" element={<ClientsPage />} />
+        <Route path="shifts" element={<ShiftsPage />} />
+        <Route path="procurement" element={<ProcurementPage />} />
+        <Route path="suppliers" element={<SuppliersPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="inventory" element={<InventoryPage />} />
         <Route path="menu" element={<MenuPage />} />
