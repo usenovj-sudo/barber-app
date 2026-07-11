@@ -1,0 +1,28 @@
+name: Strip legacy BarberBook files
+
+on: workflow_dispatch
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Remove legacy BarberBook files and this workflow
+        run: |
+          set -euo pipefail
+          git rm -r -q --ignore-unmatch src public supabase .claude
+          git rm -q --ignore-unmatch index.html vite.config.js eslint.config.js netlify.toml package-lock.json
+          git rm -q --ignore-unmatch .github/workflows/split-cleanup.yml
+          git config user.name "Claude"
+          git config user.email "noreply@anthropic.com"
+          git commit -m "chore: remove legacy BarberBook app — branch now contains only the cafe platform
+
+          Delete src/, public/, supabase/, root index.html, vite.config.js,
+          eslint.config.js, netlify.toml, package-lock.json and .claude/ — all
+          belonged to the old barber booking app. The cafe platform (packages/*)
+          is self-contained and unaffected. Also removes this one-shot workflow."
+          git push origin HEAD:${GITHUB_REF_NAME}
