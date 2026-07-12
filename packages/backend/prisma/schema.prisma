@@ -365,6 +365,7 @@ model Supplier {
   invoices             Invoice[]
   reviews              SupplierReview[]
   agentPreferences     AgentSupplierPreference[]
+  users                SupplierUser[]
 }
 
 model CafeSupplier {
@@ -609,4 +610,16 @@ model AuditLog {
   entityId  String
   diff      Json?
   createdAt DateTime @default(now())
+}
+
+// Login account for the supplier-side B2B portal (independent of cafe staff).
+model SupplierUser {
+  id           String   @id @default(cuid())
+  supplierId   String
+  supplier     Supplier @relation(fields: [supplierId], references: [id])
+  name         String
+  email        String   @unique
+  passwordHash String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
 }

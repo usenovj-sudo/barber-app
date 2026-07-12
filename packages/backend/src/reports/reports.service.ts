@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { ReportPeriod, resolvePeriod, dayKey, PeriodRange } from './period.util';
+import { AiService, DishWeekdaySales } from '../ai/ai.service';
 
 // Plain-number report shape (Decimals converted) ready for JSON / export.
 export interface PeriodReport {
@@ -32,7 +33,67 @@ const ZERO = new Prisma.Decimal(0);
 
 @Injectable()
 export class ReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ai: AiService,
+  ) {}
+
+  // Demand forecast: average portions sold per weekday per dish over a window,
+  // then AI narrative on top (rule-based numbers work without an API key).
+  async getDemandForecast(cafeId: string, weeksBack = 6) {
+    const to = new Date();
+    const from = new Date();
+    from.setDate(from.getDate() - weeksBack * 7);
+
+    const items = await this.prisma.orderItem.findMany({
+      where: {
+        order: { cafeId, status: 'PAID', updatedAt: { gte: from, lt: to } },
+        status: { not: 'CANCELLED' },
+      },
+      select: {
+        quantity: true,
+        dish: { select: { id: true, name: true } },
+        order: { select: { updatedAt: true } },
+      },
+    });
+
+    // Count how many times each weekday actually occurred in the window,
+    // so we divide totals by real occurrences to get a per-day average.
+    const weekdayOccurrences = [0, 0, 0, 0, 0, 0, 0];
+    for (let d = new Date(from); d < to; d.setDate(d.getDate() + 1)) {
+      weekdayOccurrences[(d.getDay() + 6) % 7] += 1;
+    }
+
+    // dishId -> { name, totals[7] }
+    const map = new Map<string, { name: string; totals: number[] }>();
+    for (const it of items) {
+      const wd = (new Date(it.order.updatedAt).getDay() + 6) % 7; // 0=Mon
+      const entry = map.get(it.dish.id) ?? { name: it.dish.name, totals: [0, 0, 0, 0, 0, 0, 0] };
+      entry.totals[wd] += it.quantity;
+      map.set(it.dish.id, entry);
+    }
+
+    const history: DishWeekdaySales[] = [...map.entries()]
+      .map(([dishId, v]) => ({
+        dishId,
+        dishName: v.name,
+        avgByWeekday: v.totals.map((t, i) =>
+          weekdayOccurrences[i] ? Math.round((t / weekdayOccurrences[i]) * 10) / 10 : 0,
+        ),
+      }))
+      .sort(
+        (a, b) =>
+          b.avgByWeekday.reduce((x, y) => x + y, 0) - a.avgByWeekday.reduce((x, y) => x + y, 0),
+      );
+
+    const cafe = await this.prisma.cafe.findUnique({
+      where: { id: cafeId },
+      select: { name: true },
+    });
+
+    const result = await this.ai.forecastDemand(cafe?.name ?? '', history);
+    return { ...result, weeksAnalyzed: weeksBack, generatedAt: new Date().toISOString() };
+  }
 
   async getReport(cafeId: string, period: ReportPeriod, dateStr?: string): Promise<PeriodReport> {
     const range = resolvePeriod(period, dateStr);

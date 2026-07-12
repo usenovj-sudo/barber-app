@@ -44,6 +44,15 @@ export class ReportsController {
     return this.reports.getDashboard(cafeId);
   }
 
+  @Get('demand-forecast')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'AI demand forecast: portions per dish by day of week' })
+  @ApiQuery({ name: 'weeks', required: false, description: 'History window in weeks (default 6)' })
+  demandForecast(@Param('cafeId') cafeId: string, @Query('weeks') weeks?: string) {
+    const w = weeks ? Math.min(52, Math.max(1, parseInt(weeks))) : 6;
+    return this.reports.getDemandForecast(cafeId, w);
+  }
+
   @Get('financial')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Detailed financial report for a period' })

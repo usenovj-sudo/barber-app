@@ -4,8 +4,10 @@ import { ExportService } from './export.service';
 import { AuditService } from './audit.service';
 import { ReportsController } from './reports.controller';
 import { AuditController } from './audit.controller';
+import { AiModule } from '../ai/ai.module';
 
 @Module({
+  imports: [AiModule],
   providers: [ReportsService, ExportService, AuditService],
   controllers: [ReportsController, AuditController],
   exports: [ReportsService, AuditService],

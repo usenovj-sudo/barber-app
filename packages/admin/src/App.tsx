@@ -11,11 +11,13 @@ import { KitchenPage } from './pages/KitchenPage';
 import { PosTablesPage } from './pages/PosTablesPage';
 import { PosOrderPage } from './pages/PosOrderPage';
 import { GuestMenuPage } from './pages/GuestMenuPage';
+import { SupplierPortal } from './pages/SupplierPortal';
 import { ClientsPage } from './pages/ClientsPage';
 import { ReservationsPage } from './pages/ReservationsPage';
 import { ProcurementPage } from './pages/ProcurementPage';
 import { SuppliersPage } from './pages/SuppliersPage';
 import { ShiftsPage } from './pages/ShiftsPage';
+import { ForecastPage } from './pages/ForecastPage';
 
 function Protected({ children }: { children: JSX.Element }) {
   const { user } = useAuth();
@@ -29,6 +31,8 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       {/* Public guest QR ordering — no auth */}
       <Route path="/order/:qrCode" element={<GuestMenuPage />} />
+      {/* Supplier B2B portal — separate login, independent of cafe staff auth */}
+      <Route path="/supplier" element={<SupplierPortal />} />
       {/* Fullscreen kitchen display — no admin chrome */}
       <Route
         path="/kitchen"
@@ -55,6 +59,7 @@ export default function App() {
         <Route path="procurement" element={<ProcurementPage />} />
         <Route path="suppliers" element={<SuppliersPage />} />
         <Route path="reports" element={<ReportsPage />} />
+        <Route path="forecast" element={<ForecastPage />} />
         <Route path="inventory" element={<InventoryPage />} />
         <Route path="menu" element={<MenuPage />} />
         <Route path="audit" element={<AuditPage />} />

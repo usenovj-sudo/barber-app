@@ -1,4 +1,4 @@
-import { PrismaClient } from '../src/generated/prisma';
+import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -175,11 +175,57 @@ async function main() {
   }
   console.log('✓ Hall and 8 tables created');
 
+  // 8. Seed a supplier + B2B portal login + catalogue, linked to the cafe
+  const supplier = await prisma.supplier.upsert({
+    where: { id: 'sup-agro-001' },
+    update: {},
+    create: {
+      id: 'sup-agro-001',
+      name: 'АгроПоставка',
+      contactInfo: '+7 727 111-22-33',
+      region: 'Алматы',
+      rating: 4.7,
+      reviewCount: 3,
+    },
+  });
+
+  await prisma.cafeSupplier.upsert({
+    where: { cafeId_supplierId: { cafeId: cafe.id, supplierId: supplier.id } },
+    update: {},
+    create: { cafeId: cafe.id, supplierId: supplier.id, isFavorite: true },
+  });
+
+  const supProducts = [
+    { id: 'sp-rice-agro', name: 'Рис длиннозёрный', unit: 'kg', price: 320, minOrderQty: 10 },
+    { id: 'sp-carrot-agro', name: 'Морковь свежая', unit: 'kg', price: 110, minOrderQty: 10 },
+    { id: 'sp-lamb-agro', name: 'Баранина охл.', unit: 'kg', price: 3100, minOrderQty: 5 },
+  ];
+  for (const p of supProducts) {
+    await prisma.supplierProduct.upsert({
+      where: { id: p.id },
+      update: {},
+      create: { ...p, supplierId: supplier.id },
+    });
+  }
+
+  const supPasswordHash = await bcrypt.hash('agro123', 12);
+  await prisma.supplierUser.upsert({
+    where: { email: 'agro@postavka.kz' },
+    update: {},
+    create: {
+      supplierId: supplier.id,
+      name: 'Менеджер АгроПоставки',
+      email: 'agro@postavka.kz',
+      passwordHash: supPasswordHash,
+    },
+  });
+  console.log('✓ Supplier + portal login created');
+
   console.log('\n✅ Seed complete!');
   console.log('─────────────────────────────────');
-  console.log('Cafe ID:      ', cafe.id);
-  console.log('Admin login:  ', 'admin@arlan.kz');
-  console.log('Password:     ', 'admin123');
+  console.log('Cafe ID:        ', cafe.id);
+  console.log('Admin login:    ', 'admin@arlan.kz / admin123');
+  console.log('Supplier portal:', 'agro@postavka.kz / agro123');
   console.log('─────────────────────────────────');
 }
 

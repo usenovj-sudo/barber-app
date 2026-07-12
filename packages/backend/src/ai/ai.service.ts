@@ -2,6 +2,22 @@ import { Injectable, Logger } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
 import { Prisma } from '@prisma/client';
 
+// Weekday index 0=Monday … 6=Sunday
+export const WEEKDAY_RU = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
+// Per-dish average portions sold on each weekday (0=Mon … 6=Sun)
+export interface DishWeekdaySales {
+  dishId: string;
+  dishName: string;
+  avgByWeekday: number[]; // length 7 — forecast/expected portions per weekday
+}
+
+export interface DemandForecast {
+  summary: string;
+  forecast: DishWeekdaySales[];
+  insights: string[];
+}
+
 export interface IngredientAnalysis {
   id: string;
   name: string;
@@ -192,6 +208,116 @@ ${JSON.stringify(ingredients, null, 2)}`;
         ? `Критичный уровень запасов: ${critical.join(', ')}. Рекомендуется срочная закупка ${items.length} позиций на ~${Math.round(total).toLocaleString('ru')}₸.`
         : `Рекомендуется плановая закупка ${items.length} позиций на ~${Math.round(total).toLocaleString('ru')}₸.`,
       totalEstimatedAmount: Math.round(total),
+    };
+  }
+
+  // ─── Demand forecast by day of week ───────────────────────────────────────
+
+  async forecastDemand(
+    cafeName: string,
+    history: DishWeekdaySales[],
+  ): Promise<DemandForecast> {
+    // Rule-based numeric forecast: expected portions per weekday = historical average.
+    const base = this.ruleBasedForecast(history);
+
+    if (
+      !process.env.ANTHROPIC_API_KEY ||
+      process.env.ANTHROPIC_API_KEY.startsWith('sk-ant-placeholder') ||
+      history.length === 0
+    ) {
+      return base;
+    }
+
+    // With a real key, ask Claude to add narrative insights on top of the numbers.
+    try {
+      const response = await this.client.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1500,
+        system: `Ты — аналитик спроса кафе "${cafeName}". По истории продаж (порции по дням недели)
+дай краткие практичные выводы: какие блюда готовить больше в какие дни, где пик спроса,
+какие позиции слабые. Отвечай ТОЛЬКО через инструмент demand_insights.`,
+        tools: [
+          {
+            name: 'demand_insights',
+            description: 'Выводы по спросу',
+            input_schema: {
+              type: 'object' as const,
+              properties: {
+                summary: { type: 'string', description: 'Резюме в 1-2 предложения' },
+                insights: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: '3-5 конкретных рекомендаций',
+                },
+              },
+              required: ['summary', 'insights'],
+            },
+          },
+        ],
+        tool_choice: { type: 'tool', name: 'demand_insights' },
+        messages: [
+          {
+            role: 'user',
+            content: `Дни недели: 0=Пн … 6=Вс. Продажи по блюдам:\n${JSON.stringify(history, null, 2)}`,
+          },
+        ],
+      });
+      const toolUse = response.content.find((c) => c.type === 'tool_use');
+      if (toolUse && toolUse.type === 'tool_use') {
+        const out = toolUse.input as { summary: string; insights: string[] };
+        return { ...base, summary: out.summary, insights: out.insights };
+      }
+      return base;
+    } catch (err) {
+      this.logger.error('Claude demand forecast error, using rule-based:', err);
+      return base;
+    }
+  }
+
+  private ruleBasedForecast(history: DishWeekdaySales[]): DemandForecast {
+    const totalWeek = history.reduce(
+      (s, d) => s + d.avgByWeekday.reduce((a, b) => a + b, 0),
+      0,
+    );
+    // Find the busiest weekday across all dishes
+    const weekdayTotals = [0, 0, 0, 0, 0, 0, 0];
+    for (const d of history) {
+      d.avgByWeekday.forEach((v, i) => (weekdayTotals[i] += v));
+    }
+    const peakIdx = weekdayTotals.indexOf(Math.max(...weekdayTotals));
+    const topDish = [...history].sort(
+      (a, b) =>
+        b.avgByWeekday.reduce((x, y) => x + y, 0) - a.avgByWeekday.reduce((x, y) => x + y, 0),
+    )[0];
+
+    const insights: string[] = [];
+    if (history.length) {
+      insights.push(
+        `Пик спроса — ${WEEKDAY_RU[peakIdx]} (~${Math.round(weekdayTotals[peakIdx])} порц./день). Готовьте запас заранее.`,
+      );
+      if (topDish) {
+        insights.push(
+          `Самое ходовое блюдо — «${topDish.dishName}» (~${Math.round(
+            topDish.avgByWeekday.reduce((a, b) => a + b, 0),
+          )} порц./нед).`,
+        );
+      }
+      const weak = history.filter(
+        (d) => d.avgByWeekday.reduce((a, b) => a + b, 0) < 1,
+      );
+      if (weak.length) {
+        insights.push(
+          `Слабые позиции (<1 порц./нед): ${weak.map((d) => d.dishName).join(', ')} — пересмотрите меню/цену.`,
+        );
+      }
+    }
+
+    return {
+      summary: history.length
+        ? `Прогноз на неделю: ~${Math.round(totalWeek)} порций. Пик — ${WEEKDAY_RU[peakIdx]}.`
+        : 'Недостаточно данных о продажах для прогноза. Нужна история оплаченных заказов.',
+      forecast: history,
+      insights,
     };
   }
 }

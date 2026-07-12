@@ -17,6 +17,7 @@ import { LoyaltyModule } from './loyalty/loyalty.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { ReportsModule } from './reports/reports.module';
 import { TablesModule } from './tables/tables.module';
+import { SupplierPortalModule } from './supplier-portal/supplier-portal.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { TablesModule } from './tables/tables.module';
     ReservationsModule,
     ReportsModule,
     TablesModule,
+    SupplierPortalModule,
   ],
 })
 export class AppModule {}

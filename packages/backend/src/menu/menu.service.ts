@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RecipesService } from '../recipes/recipes.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
@@ -170,6 +171,36 @@ export class MenuService {
     });
 
     return { message: 'Dish deleted' };
+  }
+
+  // ── Modifiers (priced add-ons per dish) ────────────────────────────────────
+
+  async listModifiers(cafeId: string, dishId: string) {
+    const dish = await this.prisma.dish.findFirst({ where: { id: dishId, cafeId } });
+    if (!dish) throw new NotFoundException('Dish not found');
+    const mods = await this.prisma.modifier.findMany({
+      where: { dishId },
+      orderBy: { name: 'asc' },
+    });
+    return mods.map((m) => ({ ...m, priceDelta: Number(m.priceDelta) }));
+  }
+
+  async addModifier(cafeId: string, dishId: string, name: string, priceDelta: number) {
+    const dish = await this.prisma.dish.findFirst({ where: { id: dishId, cafeId } });
+    if (!dish) throw new NotFoundException('Dish not found');
+    const mod = await this.prisma.modifier.create({
+      data: { dishId, name, priceDelta: new Prisma.Decimal(priceDelta ?? 0) },
+    });
+    return { ...mod, priceDelta: Number(mod.priceDelta) };
+  }
+
+  async deleteModifier(cafeId: string, id: string) {
+    const mod = await this.prisma.modifier.findFirst({
+      where: { id, dish: { cafeId } },
+    });
+    if (!mod) throw new NotFoundException('Modifier not found');
+    await this.prisma.modifier.delete({ where: { id } });
+    return { message: 'Modifier deleted' };
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────

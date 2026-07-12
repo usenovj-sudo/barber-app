@@ -8,6 +8,7 @@ const NAV = [
   { to: '/reservations', label: 'Брони' },
   { to: '/clients', label: 'Клиенты' },
   { to: '/procurement', label: '🤖 Закупки' },
+  { to: '/forecast', label: '🤖 Прогноз спроса' },
   { to: '/suppliers', label: 'Поставщики' },
   { to: '/reports', label: 'Отчёты' },
   { to: '/inventory', label: 'Склад' },

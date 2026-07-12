@@ -39,6 +39,7 @@ export class OrdersService {
           where: { isActive: true },
           include: { items: { include: { ingredient: true } } },
         },
+        modifiers: true,
       },
     });
 
@@ -54,7 +55,16 @@ export class OrdersService {
     const itemsData = dto.items.map((item) => {
       const dish = dishMap.get(item.dishId)!;
       const recipe = dish.recipes[0];
-      const itemPrice = dish.price.mul(item.quantity);
+
+      // Resolve selected modifiers (by id) and add their price surcharge
+      const selectedIds = item.modifiers ?? [];
+      const selectedMods = dish.modifiers.filter((m) => selectedIds.includes(m.id));
+      const modifierDelta = selectedMods.reduce(
+        (sum, m) => sum.add(m.priceDelta),
+        new Prisma.Decimal(0),
+      );
+      const unitPrice = dish.price.add(modifierDelta);
+      const itemPrice = unitPrice.mul(item.quantity);
       let itemCost = new Prisma.Decimal(0);
 
       if (recipe) {
@@ -70,11 +80,16 @@ export class OrdersService {
         dishId: item.dishId,
         recipeId: recipe?.id ?? '',
         quantity: item.quantity,
-        price: dish.price,
+        price: unitPrice, // unit price incl. modifier surcharge
         costPrice: itemCost,
         comment: item.comment,
         guestTag: item.guestTag,
-        modifiers: (item.modifiers ?? []) as Prisma.InputJsonValue,
+        // Store resolved modifiers so receipts/kitchen show name + surcharge
+        modifiers: selectedMods.map((m) => ({
+          id: m.id,
+          name: m.name,
+          priceDelta: Number(m.priceDelta),
+        })) as Prisma.InputJsonValue,
       };
     });
 

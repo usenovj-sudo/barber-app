@@ -28,6 +28,7 @@ export function MenuPage() {
   const { cafeId } = useAuth();
   const queryClient = useQueryClient();
   const [editDish, setEditDish] = useState<Dish | 'new' | null>(null);
+  const [modDish, setModDish] = useState<Dish | null>(null);
   const [catOpen, setCatOpen] = useState(false);
   const menuKey = ['menu', cafeId];
 
@@ -125,6 +126,12 @@ export function MenuPage() {
                           править
                         </button>
                         <button
+                          onClick={() => setModDish(d)}
+                          className="text-slate-500 hover:underline text-xs mr-3"
+                        >
+                          модификаторы
+                        </button>
+                        <button
                           onClick={() => {
                             if (confirm(`Удалить «${d.name}»?`)) del.mutate(d.id);
                           }}
@@ -157,7 +164,103 @@ export function MenuPage() {
           onSaved={() => queryClient.invalidateQueries({ queryKey: ['categories', cafeId] })}
         />
       )}
+      {modDish && <ModifiersModal dish={modDish} onClose={() => setModDish(null)} onSaved={invalidate} />}
     </div>
+  );
+}
+
+interface Modifier {
+  id: string;
+  name: string;
+  priceDelta: number;
+}
+
+function ModifiersModal({
+  dish,
+  onClose,
+  onSaved,
+}: {
+  dish: Dish;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { cafeId } = useAuth();
+  const queryClient = useQueryClient();
+  const key = ['modifiers', cafeId, dish.id];
+  const [name, setName] = useState('');
+  const [delta, setDelta] = useState(0);
+
+  const { data } = useQuery({
+    queryKey: key,
+    queryFn: async () =>
+      (await api.get<Modifier[]>(`/cafes/${cafeId}/dishes/${dish.id}/modifiers`)).data,
+  });
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: key });
+    onSaved();
+  };
+
+  const add = useMutation({
+    mutationFn: () =>
+      api.post(`/cafes/${cafeId}/dishes/${dish.id}/modifiers`, { name, priceDelta: delta }),
+    onSuccess: () => {
+      setName('');
+      setDelta(0);
+      refresh();
+    },
+  });
+  const del = useMutation({
+    mutationFn: (id: string) => api.delete(`/cafes/${cafeId}/modifiers/${id}`),
+    onSuccess: refresh,
+  });
+
+  return (
+    <Modal title={`Модификаторы: ${dish.name}`} onClose={onClose}>
+      <p className="text-xs text-slate-500 mb-3">
+        Наценки-добавки (двойная порция, соус и т.д.). Сумма прибавляется к цене блюда при заказе.
+      </p>
+
+      <ul className="space-y-1 mb-4">
+        {data?.map((m) => (
+          <li key={m.id} className="flex items-center justify-between text-sm border-b border-slate-100 py-1.5">
+            <span className="text-slate-700">{m.name}</span>
+            <span className="flex items-center gap-3">
+              <span className="tabular-nums text-emerald-600">+{m.priceDelta.toLocaleString('ru-RU')} ₸</span>
+              <button onClick={() => del.mutate(m.id)} className="text-red-500 hover:underline text-xs">
+                ✕
+              </button>
+            </span>
+          </li>
+        ))}
+        {data?.length === 0 && <li className="text-sm text-slate-400 py-2">Пока нет модификаторов</li>}
+      </ul>
+
+      <div className="flex gap-2 items-end">
+        <div className="flex-1">
+          <Field label="Название">
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Двойная порция" />
+          </Field>
+        </div>
+        <div className="w-28">
+          <Field label="Наценка ₸">
+            <Input type="number" value={delta} onChange={(e) => setDelta(Number(e.target.value))} />
+          </Field>
+        </div>
+        <div className="pb-3">
+          <Button onClick={() => add.mutate()} disabled={add.isPending || !name}>
+            +
+          </Button>
+        </div>
+      </div>
+      {add.error && <ErrorBox error={add.error} />}
+
+      <div className="flex justify-end mt-4">
+        <Button variant="ghost" onClick={onClose}>
+          Готово
+        </Button>
+      </div>
+    </Modal>
   );
 }
 

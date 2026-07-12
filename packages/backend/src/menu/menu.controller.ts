@@ -14,6 +14,7 @@ import { MenuService } from './menu.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { CreateDishDto } from './dto/create-dish.dto';
 import { UpdateDishDto } from './dto/update-dish.dto';
+import { CreateModifierDto } from './dto/create-modifier.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -106,5 +107,32 @@ export class MenuController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.menuService.deleteDish(cafeId, id, user.sub);
+  }
+
+  // ── Modifiers (priced add-ons) ──────────────────────────────────────────────
+
+  @Get('dishes/:dishId/modifiers')
+  @Roles(UserRole.ADMIN, UserRole.WAITER, UserRole.CASHIER)
+  @ApiOperation({ summary: 'List priced modifiers for a dish' })
+  listModifiers(@Param('cafeId') cafeId: string, @Param('dishId') dishId: string) {
+    return this.menuService.listModifiers(cafeId, dishId);
+  }
+
+  @Post('dishes/:dishId/modifiers')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Add a priced modifier to a dish (admin only)' })
+  addModifier(
+    @Param('cafeId') cafeId: string,
+    @Param('dishId') dishId: string,
+    @Body() dto: CreateModifierDto,
+  ) {
+    return this.menuService.addModifier(cafeId, dishId, dto.name, dto.priceDelta ?? 0);
+  }
+
+  @Delete('modifiers/:id')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Delete a modifier (admin only)' })
+  deleteModifier(@Param('cafeId') cafeId: string, @Param('id') id: string) {
+    return this.menuService.deleteModifier(cafeId, id);
   }
 }
