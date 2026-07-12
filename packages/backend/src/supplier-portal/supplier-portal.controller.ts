@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SupplierPortalService } from './supplier-portal.service';
 import { CurrentSupplier, SupplierJwtGuard } from './supplier-jwt.guard';
@@ -86,5 +86,45 @@ export class SupplierPortalController {
     @Body() body: { quotes: QuoteItemDto[] },
   ) {
     return this.portal.submitQuote(s.supplierId, id, body.quotes ?? []);
+  }
+
+  @Post('requests/:id/accept')
+  @ApiBearerAuth()
+  @UseGuards(SupplierJwtGuard)
+  @ApiOperation({ summary: 'Accept request → CONFIRMED, start fulfillment' })
+  accept(@CurrentSupplier() s: SupplierJwtPayload, @Param('id') id: string) {
+    return this.portal.acceptRequest(s.supplierId, id);
+  }
+
+  @Post('requests/:id/reject')
+  @ApiBearerAuth()
+  @UseGuards(SupplierJwtGuard)
+  @ApiOperation({ summary: 'Reject the whole request' })
+  reject(
+    @CurrentSupplier() s: SupplierJwtPayload,
+    @Param('id') id: string,
+    @Body() body: { reason?: string },
+  ) {
+    return this.portal.rejectRequest(s.supplierId, id, body.reason ?? '');
+  }
+
+  @Patch('requests/:id/delivery')
+  @ApiBearerAuth()
+  @UseGuards(SupplierJwtGuard)
+  @ApiOperation({ summary: 'Advance shipping status (PREPARING→SHIPPED→IN_TRANSIT→DELIVERED)' })
+  delivery(
+    @CurrentSupplier() s: SupplierJwtPayload,
+    @Param('id') id: string,
+    @Body() body: { deliveryStatus: string },
+  ) {
+    return this.portal.updateDelivery(s.supplierId, id, body.deliveryStatus);
+  }
+
+  @Get('analytics')
+  @ApiBearerAuth()
+  @UseGuards(SupplierJwtGuard)
+  @ApiOperation({ summary: 'Revenue, deliveries and top products per cafe' })
+  analytics(@CurrentSupplier() s: SupplierJwtPayload) {
+    return this.portal.getAnalytics(s.supplierId);
   }
 }

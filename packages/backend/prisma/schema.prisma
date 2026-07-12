@@ -452,9 +452,17 @@ model PurchaseRequest {
   rejectionReason  String?
   adminEdits       Json?
   totalAmount      Decimal?              @db.Decimal(12, 2)
+  deliveryStatus   DeliveryStatus?       // supplier-driven shipping tracker
   createdAt        DateTime              @default(now())
 
   items PurchaseRequestItem[]
+}
+
+enum DeliveryStatus {
+  PREPARING
+  SHIPPED
+  IN_TRANSIT
+  DELIVERED
 }
 
 enum PurchaseRequestStatus {

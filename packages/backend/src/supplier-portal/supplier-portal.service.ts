@@ -137,6 +137,7 @@ export class SupplierPortalService {
     return requests.map((r) => ({
       id: r.id,
       status: r.status,
+      deliveryStatus: r.deliveryStatus,
       cafe: r.cafe,
       createdAt: r.createdAt,
       items: r.items.map((it) => ({
@@ -185,5 +186,114 @@ export class SupplierPortalService {
       where: { id: requestId },
       data: { status: 'QUOTED', totalAmount: total },
     });
+  }
+
+  // Supplier accepts the request → CONFIRMED and starts fulfillment
+  async acceptRequest(supplierId: string, requestId: string) {
+    const request = await this.ownedRequest(supplierId, requestId);
+    if (!['SENT', 'QUOTED'].includes(request.status)) {
+      throw new BadRequestException(`Cannot accept a request in status ${request.status}`);
+    }
+    return this.prisma.purchaseRequest.update({
+      where: { id: requestId },
+      data: { status: 'CONFIRMED', deliveryStatus: 'PREPARING' },
+    });
+  }
+
+  // Supplier declines the whole request
+  async rejectRequest(supplierId: string, requestId: string, reason: string) {
+    const request = await this.ownedRequest(supplierId, requestId);
+    if (!['SENT', 'QUOTED'].includes(request.status)) {
+      throw new BadRequestException(`Cannot reject a request in status ${request.status}`);
+    }
+    return this.prisma.purchaseRequest.update({
+      where: { id: requestId },
+      data: { status: 'REJECTED', rejectionReason: reason || 'Отклонено поставщиком' },
+    });
+  }
+
+  // Advance the shipping status (собрано → отправлено → в пути → доставлено)
+  async updateDelivery(supplierId: string, requestId: string, deliveryStatus: string) {
+    const allowed = ['PREPARING', 'SHIPPED', 'IN_TRANSIT', 'DELIVERED'];
+    if (!allowed.includes(deliveryStatus)) {
+      throw new BadRequestException('Invalid delivery status');
+    }
+    const request = await this.ownedRequest(supplierId, requestId);
+    if (request.status !== 'CONFIRMED') {
+      throw new BadRequestException('Delivery tracking is available only for confirmed requests');
+    }
+    return this.prisma.purchaseRequest.update({
+      where: { id: requestId },
+      data: { deliveryStatus: deliveryStatus as never },
+    });
+  }
+
+  private async ownedRequest(supplierId: string, requestId: string) {
+    const request = await this.prisma.purchaseRequest.findFirst({
+      where: { id: requestId, items: { some: { supplierId } } },
+    });
+    if (!request) throw new NotFoundException('Request not found');
+    return request;
+  }
+
+  // ─── Supplier analytics: revenue & history per cafe, top products ──────────
+
+  async getAnalytics(supplierId: string) {
+    const invoices = await this.prisma.invoice.findMany({
+      where: { supplierId },
+      include: { items: { include: { ingredient: { select: { name: true } } } } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Invoice has cafeId but no cafe relation — resolve names in one query
+    const cafeIds = [...new Set(invoices.map((i) => i.cafeId))];
+    const cafes = await this.prisma.cafe.findMany({
+      where: { id: { in: cafeIds } },
+      select: { id: true, name: true },
+    });
+    const cafeName = new Map(cafes.map((c) => [c.id, c.name]));
+
+    let totalRevenue = new Prisma.Decimal(0);
+    const byCafe = new Map<string, { name: string; revenue: Prisma.Decimal; deliveries: number }>();
+    const byProduct = new Map<string, { name: string; qty: Prisma.Decimal; revenue: Prisma.Decimal }>();
+
+    for (const inv of invoices) {
+      totalRevenue = totalRevenue.add(inv.total);
+      const name = cafeName.get(inv.cafeId) ?? 'Кафе';
+      const c = byCafe.get(inv.cafeId) ?? { name, revenue: new Prisma.Decimal(0), deliveries: 0 };
+      c.revenue = c.revenue.add(inv.total);
+      c.deliveries += 1;
+      byCafe.set(inv.cafeId, c);
+
+      for (const it of inv.items) {
+        const p = byProduct.get(it.ingredientId) ?? {
+          name: it.ingredient.name,
+          qty: new Prisma.Decimal(0),
+          revenue: new Prisma.Decimal(0),
+        };
+        p.qty = p.qty.add(it.quantity);
+        p.revenue = p.revenue.add(it.unitPrice.mul(it.quantity));
+        byProduct.set(it.ingredientId, p);
+      }
+    }
+
+    return {
+      totalRevenue: totalRevenue.toNumber(),
+      deliveryCount: invoices.length,
+      cafeCount: byCafe.size,
+      byCafe: [...byCafe.values()]
+        .map((c) => ({ name: c.name, revenue: c.revenue.toNumber(), deliveries: c.deliveries }))
+        .sort((a, b) => b.revenue - a.revenue),
+      topProducts: [...byProduct.values()]
+        .map((p) => ({ name: p.name, qty: p.qty.toNumber(), revenue: p.revenue.toNumber() }))
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 10),
+      recentDeliveries: invoices.slice(0, 10).map((inv) => ({
+        id: inv.id,
+        cafeName: cafeName.get(inv.cafeId) ?? 'Кафе',
+        total: inv.total.toNumber(),
+        date: inv.createdAt,
+      })),
+    };
   }
 }

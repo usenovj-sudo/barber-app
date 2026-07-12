@@ -74,7 +74,7 @@ function SupplierLogin({ onLogin }: { onLogin: () => void }) {
   );
 }
 
-type Tab = 'profile' | 'catalog' | 'requests';
+type Tab = 'requests' | 'catalog' | 'analytics' | 'profile';
 
 function SupplierDashboard({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>('requests');
@@ -89,7 +89,7 @@ function SupplierDashboard({ onLogout }: { onLogout: () => void }) {
 
       <div className="max-w-4xl mx-auto p-5">
         <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 mb-5">
-          {([['requests', 'Заявки'], ['catalog', 'Каталог'], ['profile', 'Профиль']] as [Tab, string][]).map(([k, label]) => (
+          {([['requests', 'Заявки'], ['catalog', 'Каталог'], ['analytics', 'Аналитика'], ['profile', 'Профиль']] as [Tab, string][]).map(([k, label]) => (
             <button key={k} onClick={() => setTab(k)} className={`px-4 py-1.5 text-sm rounded-md ${tab === k ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
               {label}
             </button>
@@ -98,6 +98,7 @@ function SupplierDashboard({ onLogout }: { onLogout: () => void }) {
 
         {tab === 'profile' && <ProfileTab />}
         {tab === 'catalog' && <CatalogTab />}
+        {tab === 'analytics' && <AnalyticsTab />}
         {tab === 'requests' && <RequestsTab />}
       </div>
     </div>
@@ -185,55 +186,163 @@ function CatalogTab() {
 }
 
 interface ReqItem { id: string; ingredientName: string; unit: string; quantity: number; unitPrice: number | null }
-interface Request { id: string; status: string; cafe: { name: string }; createdAt: string; items: ReqItem[] }
+interface Request { id: string; status: string; deliveryStatus: string | null; cafe: { name: string }; createdAt: string; items: ReqItem[] }
+
+const DELIVERY_FLOW = ['PREPARING', 'SHIPPED', 'IN_TRANSIT', 'DELIVERED'];
+const DELIVERY_RU: Record<string, string> = {
+  PREPARING: 'Собирается', SHIPPED: 'Отправлено', IN_TRANSIT: 'В пути', DELIVERED: 'Доставлено',
+};
 
 function RequestsTab() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ['sup-requests'], queryFn: async () => (await sapi.get<Request[]>('/supplier/requests')).data });
   const [prices, setPrices] = useState<Record<string, number>>({});
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['sup-requests'] });
 
   const quote = useMutation({
     mutationFn: (r: Request) =>
       sapi.post(`/supplier/requests/${r.id}/quote`, {
         quotes: r.items.map((it) => ({ itemId: it.id, unitPrice: prices[it.id] ?? it.unitPrice ?? 0 })),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['sup-requests'] }),
+    onSuccess: invalidate,
+  });
+  const accept = useMutation({ mutationFn: (id: string) => sapi.post(`/supplier/requests/${id}/accept`), onSuccess: invalidate });
+  const reject = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => sapi.post(`/supplier/requests/${id}/reject`, { reason }),
+    onSuccess: invalidate,
+  });
+  const ship = useMutation({
+    mutationFn: ({ id, deliveryStatus }: { id: string; deliveryStatus: string }) =>
+      sapi.patch(`/supplier/requests/${id}/delivery`, { deliveryStatus }),
+    onSuccess: invalidate,
   });
 
   if (!data?.length) return <Card className="p-8 text-center text-slate-400">Входящих заявок нет</Card>;
 
   return (
     <div className="space-y-4">
-      {data.map((r) => (
-        <Card key={r.id} className="p-5">
-          <div className="flex justify-between mb-3">
-            <span className="font-medium">{r.cafe.name}</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{r.status}</span>
-          </div>
-          <table className="w-full text-sm mb-3">
-            <thead><tr className="text-slate-400 text-left"><th className="font-normal pb-1">Позиция</th><th className="font-normal pb-1 text-right">Кол-во</th><th className="font-normal pb-1 text-right">Ваша цена</th></tr></thead>
+      {data.map((r) => {
+        const negotiating = r.status === 'SENT' || r.status === 'QUOTED';
+        const confirmed = r.status === 'CONFIRMED';
+        const nextDelivery = DELIVERY_FLOW[DELIVERY_FLOW.indexOf(r.deliveryStatus ?? 'PREPARING') + 1];
+        return (
+          <Card key={r.id} className="p-5">
+            <div className="flex justify-between mb-3">
+              <span className="font-medium">{r.cafe.name}</span>
+              <span className="flex items-center gap-2">
+                {r.deliveryStatus && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                    🚚 {DELIVERY_RU[r.deliveryStatus]}
+                  </span>
+                )}
+                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{r.status}</span>
+              </span>
+            </div>
+            <table className="w-full text-sm mb-3">
+              <thead><tr className="text-slate-400 text-left"><th className="font-normal pb-1">Позиция</th><th className="font-normal pb-1 text-right">Кол-во</th><th className="font-normal pb-1 text-right">Ваша цена</th></tr></thead>
+              <tbody>
+                {r.items.map((it) => (
+                  <tr key={it.id} className="border-t border-slate-100">
+                    <td className="py-2">{it.ingredientName}</td>
+                    <td className="py-2 text-right tabular-nums">{it.quantity} {it.unit}</td>
+                    <td className="py-2 text-right">
+                      <input type="number" disabled={!negotiating} placeholder={String(it.unitPrice ?? '')} value={prices[it.id] ?? it.unitPrice ?? ''}
+                        onChange={(e) => setPrices({ ...prices, [it.id]: Number(e.target.value) })}
+                        className="w-24 border border-slate-300 rounded-lg px-2 py-1 text-right tabular-nums disabled:bg-slate-50" /> ₸
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {negotiating && (
+              <div className="flex flex-wrap gap-2 justify-end">
+                <button onClick={() => { const reason = prompt('Причина отклонения:'); if (reason) reject.mutate({ id: r.id, reason }); }}
+                  className="text-red-600 hover:bg-red-50 rounded-lg px-3 py-2 text-sm">Отклонить</button>
+                <button onClick={() => quote.mutate(r)} disabled={quote.isPending}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg px-4 py-2 text-sm font-medium">Отправить цены</button>
+                <button onClick={() => accept.mutate(r.id)} disabled={accept.isPending}
+                  className="bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-4 py-2 text-sm font-medium">Принять в работу</button>
+              </div>
+            )}
+
+            {confirmed && (
+              <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                <span className="text-sm text-slate-500">
+                  Доставка: <b>{DELIVERY_RU[r.deliveryStatus ?? 'PREPARING']}</b>
+                </span>
+                {nextDelivery ? (
+                  <button onClick={() => ship.mutate({ id: r.id, deliveryStatus: nextDelivery })} disabled={ship.isPending}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-4 py-2 text-sm font-medium">
+                    → {DELIVERY_RU[nextDelivery]}
+                  </button>
+                ) : (
+                  <span className="text-emerald-600 text-sm font-medium">✓ Доставлено</span>
+                )}
+              </div>
+            )}
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+interface Analytics {
+  totalRevenue: number;
+  deliveryCount: number;
+  cafeCount: number;
+  byCafe: { name: string; revenue: number; deliveries: number }[];
+  topProducts: { name: string; qty: number; revenue: number }[];
+  recentDeliveries: { id: string; cafeName: string; total: number; date: string }[];
+}
+
+function AnalyticsTab() {
+  const { data } = useQuery({ queryKey: ['sup-analytics'], queryFn: async () => (await sapi.get<Analytics>('/supplier/analytics')).data });
+  if (!data) return null;
+  const t = (n: number) => `${n.toLocaleString('ru-RU')} ₸`;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-4">
+        <Card className="p-4"><div className="text-sm text-slate-500">Выручка</div><div className="text-2xl font-semibold text-emerald-600">{t(data.totalRevenue)}</div></Card>
+        <Card className="p-4"><div className="text-sm text-slate-500">Поставок</div><div className="text-2xl font-semibold">{data.deliveryCount}</div></Card>
+        <Card className="p-4"><div className="text-sm text-slate-500">Кафе-клиентов</div><div className="text-2xl font-semibold">{data.cafeCount}</div></Card>
+      </div>
+
+      <Card className="p-5">
+        <div className="font-medium mb-3">Выручка по кафе</div>
+        {data.byCafe.length ? (
+          <table className="w-full text-sm">
             <tbody>
-              {r.items.map((it) => (
-                <tr key={it.id} className="border-t border-slate-100">
-                  <td className="py-2">{it.ingredientName}</td>
-                  <td className="py-2 text-right tabular-nums">{it.quantity} {it.unit}</td>
-                  <td className="py-2 text-right">
-                    <input type="number" placeholder={String(it.unitPrice ?? '')} value={prices[it.id] ?? it.unitPrice ?? ''}
-                      onChange={(e) => setPrices({ ...prices, [it.id]: Number(e.target.value) })}
-                      className="w-24 border border-slate-300 rounded-lg px-2 py-1 text-right tabular-nums" /> ₸
-                  </td>
+              {data.byCafe.map((c) => (
+                <tr key={c.name} className="border-b border-slate-100">
+                  <td className="py-2 text-slate-700">{c.name}</td>
+                  <td className="py-2 text-right text-slate-400">{c.deliveries} пост.</td>
+                  <td className="py-2 text-right tabular-nums font-medium">{t(c.revenue)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <div className="flex justify-end">
-            <button onClick={() => quote.mutate(r)} disabled={quote.isPending}
-              className="bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50">
-              {quote.isPending ? 'Отправка…' : 'Отправить цены'}
-            </button>
-          </div>
-        </Card>
-      ))}
+        ) : <div className="text-sm text-slate-400">Пока нет поставок</div>}
+      </Card>
+
+      <Card className="p-5">
+        <div className="font-medium mb-3">Популярные товары</div>
+        {data.topProducts.length ? (
+          <table className="w-full text-sm">
+            <tbody>
+              {data.topProducts.map((p) => (
+                <tr key={p.name} className="border-b border-slate-100">
+                  <td className="py-2 text-slate-700">{p.name}</td>
+                  <td className="py-2 text-right text-slate-400 tabular-nums">{p.qty}</td>
+                  <td className="py-2 text-right tabular-nums font-medium">{t(p.revenue)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : <div className="text-sm text-slate-400">Нет данных</div>}
+      </Card>
     </div>
   );
 }
