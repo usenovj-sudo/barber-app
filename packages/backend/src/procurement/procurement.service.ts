@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { AiService, IngredientAnalysis, SupplierCandidate } from '../ai/ai.service';
 import { KitchenGateway } from '../kitchen/kitchen.gateway';
+import { TelegramService } from '../telegram/telegram.service';
 import {
   ApprovePurchaseDto,
   RejectPurchaseDto,
@@ -32,7 +33,25 @@ export class ProcurementService {
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
     private readonly kitchen: KitchenGateway,
+    private readonly telegram: TelegramService,
   ) {}
+
+  // Notify each supplier addressed by a request that a new order arrived
+  private async notifySuppliers(requestId: string) {
+    const req = await this.prisma.purchaseRequest.findUnique({
+      where: { id: requestId },
+      include: { cafe: { select: { name: true } }, items: { select: { supplierId: true } } },
+    });
+    if (!req) return;
+    const supplierIds = [...new Set(req.items.map((i) => i.supplierId).filter(Boolean))] as string[];
+    const deadline = req.respondBy ? new Date(req.respondBy).toLocaleString('ru-RU') : '—';
+    for (const sid of supplierIds) {
+      await this.telegram.notifySupplier(
+        sid,
+        `🔔 <b>Новая заявка</b> от кафе «${req.cafe.name}»\nПозиций: ${req.items.length}\nОтветить до: ${deadline}\n\nОткройте кабинет поставщика, чтобы подтвердить.`,
+      );
+    }
+  }
 
   // ─── Run procurement analysis ─────────────────────────────────────────────
 
@@ -195,6 +214,7 @@ export class ProcurementService {
 
     if (level >= 3) {
       this.logger.log(`Level 3: auto-sent purchase request ${request.id}`);
+      await this.notifySuppliers(request.id); // auto-sent → suppliers get notified now
     }
 
     return {
@@ -239,7 +259,7 @@ export class ProcurementService {
       }
     }
 
-    return this.prisma.purchaseRequest.update({
+    const sent = await this.prisma.purchaseRequest.update({
       where: { id: requestId },
       data: {
         status: 'SENT',
@@ -250,6 +270,8 @@ export class ProcurementService {
       },
       include: { items: { include: { ingredient: true, supplier: true } } },
     });
+    await this.notifySuppliers(requestId); // admin approved → notify suppliers
+    return sent;
   }
 
   // ─── Reject request ───────────────────────────────────────────────────────

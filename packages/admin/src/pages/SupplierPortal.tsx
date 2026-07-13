@@ -110,6 +110,43 @@ function Card({ children, className = '' }: { children: React.ReactNode; classNa
   return <div className={`bg-white rounded-xl border border-slate-200 shadow-sm ${className}`}>{children}</div>;
 }
 
+interface TgStatus { enabled: boolean; connected: boolean; linkUrl: string | null }
+
+function TelegramCard() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ['sup-tg'], queryFn: async () => (await sapi.get<TgStatus>('/supplier/telegram')).data });
+  const off = useMutation({ mutationFn: () => sapi.post('/supplier/telegram/disconnect'), onSuccess: () => qc.invalidateQueries({ queryKey: ['sup-tg'] }) });
+  if (!data) return null;
+
+  return (
+    <Card className="p-5">
+      <div className="font-medium mb-1">📨 Уведомления в Telegram</div>
+      {!data.enabled ? (
+        <div className="text-sm text-slate-400">
+          Telegram-бот не настроен администратором платформы (нужен TELEGRAM_BOT_TOKEN).
+        </div>
+      ) : data.connected ? (
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-emerald-600">✅ Подключено — заявки приходят в Telegram даже с закрытым приложением</span>
+          <button onClick={() => off.mutate()} className="text-red-500 hover:underline text-xs">отключить</button>
+        </div>
+      ) : (
+        <div>
+          <p className="text-sm text-slate-500 mb-2">
+            Подключите Telegram, чтобы получать новые заявки от кафе, даже когда кабинет закрыт.
+          </p>
+          {data.linkUrl && (
+            <a href={data.linkUrl} target="_blank" rel="noreferrer"
+              className="inline-block bg-sky-500 hover:bg-sky-400 text-white rounded-lg px-4 py-2 text-sm font-medium">
+              Подключить Telegram
+            </a>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function ProfileTab() {
   const { data } = useQuery({ queryKey: ['sup-me'], queryFn: async () => (await sapi.get('/supplier/me')).data });
   const { data: reviews } = useQuery({ queryKey: ['sup-reviews'], queryFn: async () => (await sapi.get('/supplier/reviews')).data });
@@ -122,6 +159,7 @@ function ProfileTab() {
         <Card className="p-4"><div className="text-sm text-slate-500">Товаров</div><div className="text-2xl font-semibold">{data.productCount}</div></Card>
         <Card className="p-4"><div className="text-sm text-slate-500">Кафе-клиентов</div><div className="text-2xl font-semibold">{data.cafeCount}</div></Card>
       </div>
+      <TelegramCard />
       <Card className="p-5">
         <div className="font-medium mb-3">Отзывы кафе</div>
         {reviews?.length ? (

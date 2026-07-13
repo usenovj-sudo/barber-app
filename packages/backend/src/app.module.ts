@@ -18,6 +18,7 @@ import { ReservationsModule } from './reservations/reservations.module';
 import { ReportsModule } from './reports/reports.module';
 import { TablesModule } from './tables/tables.module';
 import { SupplierPortalModule } from './supplier-portal/supplier-portal.module';
+import { TelegramModule } from './telegram/telegram.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { SupplierPortalModule } from './supplier-portal/supplier-portal.module';
     ReportsModule,
     TablesModule,
     SupplierPortalModule,
+    TelegramModule,
   ],
 })
 export class AppModule {}

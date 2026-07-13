@@ -9,6 +9,7 @@ import * as bcrypt from 'bcrypt';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { QuoteItemDto, SupplierLoginDto, SupplierProductDto } from './dto/supplier-portal.dto';
+import { TelegramService } from '../telegram/telegram.service';
 
 // Purchase-request statuses a supplier can act on
 const ACTIONABLE = ['SENT', 'QUOTED', 'CONFIRMED'];
@@ -18,7 +19,40 @@ export class SupplierPortalService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly telegram: TelegramService,
   ) {}
+
+  // ─── Telegram notifications binding ────────────────────────────────────────
+
+  async getTelegramStatus(supplierUserId: string) {
+    const user = await this.prisma.supplierUser.findUnique({ where: { id: supplierUserId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (!this.telegram.isEnabled()) {
+      return { enabled: false, connected: false, linkUrl: null };
+    }
+    if (user.telegramChatId) {
+      return { enabled: true, connected: true, linkUrl: null };
+    }
+    // Generate (or reuse) a one-time link code and build the deep link
+    let code = user.telegramLinkCode;
+    if (!code) {
+      code = Math.random().toString(36).slice(2, 10);
+      await this.prisma.supplierUser.update({
+        where: { id: user.id },
+        data: { telegramLinkCode: code },
+      });
+    }
+    const linkUrl = await this.telegram.linkUrl(code);
+    return { enabled: true, connected: false, linkUrl };
+  }
+
+  async disconnectTelegram(supplierUserId: string) {
+    await this.prisma.supplierUser.update({
+      where: { id: supplierUserId },
+      data: { telegramChatId: null, telegramLinkCode: null },
+    });
+    return { connected: false };
+  }
 
   async login(dto: SupplierLoginDto) {
     const user = await this.prisma.supplierUser.findUnique({

@@ -32,6 +32,7 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-refresh-different-secret}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-sk-ant-placeholder}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-changeme}
       NODE_ENV: production
       PORT: 3000
     ports:

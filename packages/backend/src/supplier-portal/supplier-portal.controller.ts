@@ -41,6 +41,22 @@ export class SupplierPortalController {
     return this.portal.getReviews(s.supplierId);
   }
 
+  @Get('telegram')
+  @ApiBearerAuth()
+  @UseGuards(SupplierJwtGuard)
+  @ApiOperation({ summary: 'Telegram link status + connect URL' })
+  telegram(@CurrentSupplier() s: SupplierJwtPayload) {
+    return this.portal.getTelegramStatus(s.sub);
+  }
+
+  @Post('telegram/disconnect')
+  @ApiBearerAuth()
+  @UseGuards(SupplierJwtGuard)
+  @ApiOperation({ summary: 'Unlink Telegram notifications' })
+  telegramOff(@CurrentSupplier() s: SupplierJwtPayload) {
+    return this.portal.disconnectTelegram(s.sub);
+  }
+
   @Get('products')
   @ApiBearerAuth()
   @UseGuards(SupplierJwtGuard)
