@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { useMutation, useQuery, useQueryClient, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -187,18 +187,81 @@ function CatalogTab() {
 }
 
 interface ReqItem { id: string; ingredientName: string; unit: string; quantity: number; unitPrice: number | null }
-interface Request { id: string; status: string; deliveryStatus: string | null; cafe: { name: string }; createdAt: string; items: ReqItem[] }
+interface Request {
+  id: string; status: string; deliveryStatus: string | null; deliveryMethod: string | null;
+  respondBy: string | null; shipBy: string | null; respondOverdue: boolean; shipOverdue: boolean;
+  cafe: { name: string; address?: string | null }; createdAt: string; items: ReqItem[];
+}
 
 const DELIVERY_FLOW = ['PREPARING', 'SHIPPED', 'IN_TRANSIT', 'DELIVERED'];
 const DELIVERY_RU: Record<string, string> = {
   PREPARING: 'Собирается', SHIPPED: 'Отправлено', IN_TRANSIT: 'В пути', DELIVERED: 'Доставлено',
 };
+const METHOD_RU: Record<string, string> = { SELF: 'Сам привезу', COURIER: 'Курьер', TAXI: 'Такси' };
+
+// Live countdown to a deadline, e.g. "через 3 ч 12 мин" / "просрочено"
+function countdown(iso: string | null): string {
+  if (!iso) return '';
+  const ms = new Date(iso).getTime() - Date.now();
+  if (ms <= 0) return 'просрочено';
+  const h = Math.floor(ms / 3600_000);
+  const m = Math.floor((ms % 3600_000) / 60_000);
+  return h > 0 ? `${h} ч ${m} мин` : `${m} мин`;
+}
+
+// Speak a phrase using the browser's built-in TTS (free, no external service)
+function speak(text: string) {
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'ru-RU';
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  } catch {
+    /* speech not supported — ignore */
+  }
+}
+
+// Short attention beep via WebAudio
+function beep() {
+  try {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = 880;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.25);
+  } catch {
+    /* audio not available — ignore */
+  }
+}
 
 function RequestsTab() {
   const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ['sup-requests'], queryFn: async () => (await sapi.get<Request[]>('/supplier/requests')).data });
+  const { data } = useQuery({
+    queryKey: ['sup-requests'],
+    queryFn: async () => (await sapi.get<Request[]>('/supplier/requests')).data,
+    refetchInterval: 20_000, // poll so new requests + countdowns stay fresh
+  });
   const [prices, setPrices] = useState<Record<string, number>>({});
+  const [methods, setMethods] = useState<Record<string, string>>({});
   const invalidate = () => qc.invalidateQueries({ queryKey: ['sup-requests'] });
+
+  // Voice + sound alert when a NEW pending request arrives
+  const prevPending = useRef<number | null>(null);
+  useEffect(() => {
+    if (!data) return;
+    const pending = data.filter((r) => r.status === 'SENT').length;
+    if (prevPending.current !== null && pending > prevPending.current) {
+      const latest = data.find((r) => r.status === 'SENT');
+      beep();
+      speak(`Новая заявка${latest ? ` от кафе ${latest.cafe.name}` : ''}`);
+    }
+    prevPending.current = pending;
+  }, [data]);
 
   const quote = useMutation({
     mutationFn: (r: Request) =>
@@ -207,7 +270,11 @@ function RequestsTab() {
       }),
     onSuccess: invalidate,
   });
-  const accept = useMutation({ mutationFn: (id: string) => sapi.post(`/supplier/requests/${id}/accept`), onSuccess: invalidate });
+  const accept = useMutation({
+    mutationFn: ({ id, deliveryMethod }: { id: string; deliveryMethod: string }) =>
+      sapi.post(`/supplier/requests/${id}/accept`, { deliveryMethod }),
+    onSuccess: invalidate,
+  });
   const reject = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) => sapi.post(`/supplier/requests/${id}/reject`, { reason }),
     onSuccess: invalidate,
@@ -226,19 +293,32 @@ function RequestsTab() {
         const negotiating = r.status === 'SENT' || r.status === 'QUOTED';
         const confirmed = r.status === 'CONFIRMED';
         const nextDelivery = DELIVERY_FLOW[DELIVERY_FLOW.indexOf(r.deliveryStatus ?? 'PREPARING') + 1];
+        const method = methods[r.id] ?? 'SELF';
+        const taxiUrl = `https://yandex.ru/maps/?text=${encodeURIComponent(r.cafe.address ?? r.cafe.name)}`;
         return (
           <Card key={r.id} className="p-5">
-            <div className="flex justify-between mb-3">
+            <div className="flex justify-between mb-2">
               <span className="font-medium">{r.cafe.name}</span>
               <span className="flex items-center gap-2">
                 {r.deliveryStatus && (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
-                    🚚 {DELIVERY_RU[r.deliveryStatus]}
-                  </span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">🚚 {DELIVERY_RU[r.deliveryStatus]}</span>
                 )}
                 <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{r.status}</span>
               </span>
             </div>
+
+            {/* Deadline line */}
+            {negotiating && r.respondBy && (
+              <div className={`text-xs mb-2 ${r.respondOverdue ? 'text-red-600 font-medium' : 'text-slate-400'}`}>
+                ⏱ Ответить до: {new Date(r.respondBy).toLocaleString('ru-RU')} · {r.respondOverdue ? 'ПРОСРОЧЕНО' : `осталось ${countdown(r.respondBy)}`}
+              </div>
+            )}
+            {confirmed && r.shipBy && r.deliveryStatus !== 'DELIVERED' && (
+              <div className={`text-xs mb-2 ${r.shipOverdue ? 'text-red-600 font-medium' : 'text-slate-400'}`}>
+                ⏱ Отгрузить до: {new Date(r.shipBy).toLocaleString('ru-RU')} · {r.shipOverdue ? 'ПРОСРОЧЕНО' : `осталось ${countdown(r.shipBy)}`}
+              </div>
+            )}
+
             <table className="w-full text-sm mb-3">
               <thead><tr className="text-slate-400 text-left"><th className="font-normal pb-1">Позиция</th><th className="font-normal pb-1 text-right">Кол-во</th><th className="font-normal pb-1 text-right">Ваша цена</th></tr></thead>
               <tbody>
@@ -257,12 +337,18 @@ function RequestsTab() {
             </table>
 
             {negotiating && (
-              <div className="flex flex-wrap gap-2 justify-end">
+              <div className="flex flex-wrap gap-2 justify-end items-center">
+                <select value={method} onChange={(e) => setMethods({ ...methods, [r.id]: e.target.value })}
+                  className="border border-slate-300 rounded-lg px-2 py-2 text-sm">
+                  <option value="SELF">Сам привезу</option>
+                  <option value="COURIER">Курьер</option>
+                  <option value="TAXI">Такси</option>
+                </select>
                 <button onClick={() => { const reason = prompt('Причина отклонения:'); if (reason) reject.mutate({ id: r.id, reason }); }}
                   className="text-red-600 hover:bg-red-50 rounded-lg px-3 py-2 text-sm">Отклонить</button>
                 <button onClick={() => quote.mutate(r)} disabled={quote.isPending}
                   className="bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg px-4 py-2 text-sm font-medium">Отправить цены</button>
-                <button onClick={() => accept.mutate(r.id)} disabled={accept.isPending}
+                <button onClick={() => accept.mutate({ id: r.id, deliveryMethod: method })} disabled={accept.isPending}
                   className="bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-4 py-2 text-sm font-medium">Принять в работу</button>
               </div>
             )}
@@ -270,16 +356,21 @@ function RequestsTab() {
             {confirmed && (
               <div className="flex items-center justify-between border-t border-slate-100 pt-3">
                 <span className="text-sm text-slate-500">
+                  {r.deliveryMethod && <span className="mr-2">Способ: <b>{METHOD_RU[r.deliveryMethod]}</b> ·</span>}
                   Доставка: <b>{DELIVERY_RU[r.deliveryStatus ?? 'PREPARING']}</b>
                 </span>
-                {nextDelivery ? (
-                  <button onClick={() => ship.mutate({ id: r.id, deliveryStatus: nextDelivery })} disabled={ship.isPending}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-4 py-2 text-sm font-medium">
-                    → {DELIVERY_RU[nextDelivery]}
-                  </button>
-                ) : (
-                  <span className="text-emerald-600 text-sm font-medium">✓ Доставлено</span>
-                )}
+                <div className="flex gap-2">
+                  {r.deliveryMethod === 'TAXI' && r.deliveryStatus !== 'DELIVERED' && (
+                    <a href={taxiUrl} target="_blank" rel="noreferrer"
+                      className="bg-yellow-400 hover:bg-yellow-300 text-slate-900 rounded-lg px-3 py-2 text-sm font-medium">🚕 Вызвать такси</a>
+                  )}
+                  {nextDelivery ? (
+                    <button onClick={() => ship.mutate({ id: r.id, deliveryStatus: nextDelivery })} disabled={ship.isPending}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-4 py-2 text-sm font-medium">→ {DELIVERY_RU[nextDelivery]}</button>
+                  ) : (
+                    <span className="text-emerald-600 text-sm font-medium self-center">✓ Доставлено</span>
+                  )}
+                </div>
               </div>
             )}
           </Card>

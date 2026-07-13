@@ -17,6 +17,13 @@ import { Prisma } from '@prisma/client';
 
 const ANALYSIS_WINDOW_DAYS = 14;
 
+// Default deadlines (hours) — supplier must respond, then ship
+const RESPOND_HOURS = 4;
+
+function hoursFromNow(h: number): Date {
+  return new Date(Date.now() + h * 3600_000);
+}
+
 @Injectable()
 export class ProcurementService {
   private readonly logger = new Logger(ProcurementService.name);
@@ -166,6 +173,8 @@ export class ProcurementService {
         approvedBy,
         approvedAt,
         sentAt: level >= 3 ? new Date() : undefined,
+        // Response deadline starts once the supplier can see it (SENT)
+        respondBy: level >= 3 ? hoursFromNow(RESPOND_HOURS) : undefined,
         totalAmount: new Prisma.Decimal(plan.totalEstimatedAmount),
         items: {
           create: plan.items.map((item) => ({
@@ -232,7 +241,13 @@ export class ProcurementService {
 
     return this.prisma.purchaseRequest.update({
       where: { id: requestId },
-      data: { status: 'SENT', approvedBy: userId, approvedAt: new Date(), sentAt: new Date() },
+      data: {
+        status: 'SENT',
+        approvedBy: userId,
+        approvedAt: new Date(),
+        sentAt: new Date(),
+        respondBy: hoursFromNow(RESPOND_HOURS),
+      },
       include: { items: { include: { ingredient: true, supplier: true } } },
     });
   }

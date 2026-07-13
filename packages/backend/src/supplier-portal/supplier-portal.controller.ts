@@ -92,9 +92,13 @@ export class SupplierPortalController {
   @Post('requests/:id/accept')
   @ApiBearerAuth()
   @UseGuards(SupplierJwtGuard)
-  @ApiOperation({ summary: 'Accept request → CONFIRMED, start fulfillment' })
-  accept(@CurrentSupplier() s: SupplierJwtPayload, @Param('id') id: string) {
-    return this.portal.acceptRequest(s.supplierId, id);
+  @ApiOperation({ summary: 'Accept request → CONFIRMED with delivery method' })
+  accept(
+    @CurrentSupplier() s: SupplierJwtPayload,
+    @Param('id') id: string,
+    @Body() body: { deliveryMethod?: string },
+  ) {
+    return this.portal.acceptRequest(s.supplierId, id, body.deliveryMethod);
   }
 
   @Post('requests/:id/reject')

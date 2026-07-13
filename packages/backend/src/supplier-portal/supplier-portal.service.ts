@@ -125,7 +125,7 @@ export class SupplierPortalService {
         items: { some: { supplierId } },
       },
       include: {
-        cafe: { select: { id: true, name: true } },
+        cafe: { select: { id: true, name: true, address: true } },
         items: {
           where: { supplierId },
           include: { ingredient: { select: { name: true, unit: true } } },
@@ -134,10 +134,19 @@ export class SupplierPortalService {
       orderBy: { createdAt: 'desc' },
     });
 
+    const now = Date.now();
     return requests.map((r) => ({
       id: r.id,
       status: r.status,
       deliveryStatus: r.deliveryStatus,
+      deliveryMethod: r.deliveryMethod,
+      respondBy: r.respondBy,
+      shipBy: r.shipBy,
+      // overdue when the relevant deadline has passed and the step isn't done
+      respondOverdue:
+        !!r.respondBy && ['SENT', 'QUOTED'].includes(r.status) && r.respondBy.getTime() < now,
+      shipOverdue:
+        !!r.shipBy && r.status === 'CONFIRMED' && r.deliveryStatus !== 'DELIVERED' && r.shipBy.getTime() < now,
       cafe: r.cafe,
       createdAt: r.createdAt,
       items: r.items.map((it) => ({
@@ -188,15 +197,23 @@ export class SupplierPortalService {
     });
   }
 
-  // Supplier accepts the request → CONFIRMED and starts fulfillment
-  async acceptRequest(supplierId: string, requestId: string) {
+  // Supplier accepts the request → CONFIRMED, picks a delivery method, gets a ship deadline
+  async acceptRequest(supplierId: string, requestId: string, deliveryMethod?: string) {
     const request = await this.ownedRequest(supplierId, requestId);
     if (!['SENT', 'QUOTED'].includes(request.status)) {
       throw new BadRequestException(`Cannot accept a request in status ${request.status}`);
     }
+    const method = ['SELF', 'COURIER', 'TAXI'].includes(deliveryMethod ?? '')
+      ? (deliveryMethod as never)
+      : 'SELF';
     return this.prisma.purchaseRequest.update({
       where: { id: requestId },
-      data: { status: 'CONFIRMED', deliveryStatus: 'PREPARING' },
+      data: {
+        status: 'CONFIRMED',
+        deliveryStatus: 'PREPARING',
+        deliveryMethod: method,
+        shipBy: new Date(Date.now() + 24 * 3600_000), // ship within 24h of accepting
+      },
     });
   }
 
