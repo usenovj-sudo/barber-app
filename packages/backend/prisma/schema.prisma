@@ -395,6 +395,7 @@ model SupplierProduct {
   stockQty    Decimal? @db.Decimal(12, 4)
 
   ingredientLinks SupplierIngredientLink[]
+  stockMovements  SupplierStockMovement[]
 }
 
 model SupplierIngredientLink {
@@ -618,6 +619,23 @@ model AuditLog {
   entityId  String
   diff      Json?
   createdAt DateTime @default(now())
+}
+
+// Stock movement log for a supplier's own warehouse (приход / расход / корректировка)
+model SupplierStockMovement {
+  id        String          @id @default(cuid())
+  productId String
+  product   SupplierProduct @relation(fields: [productId], references: [id])
+  type      StockMoveType
+  quantity  Decimal         @db.Decimal(12, 4) // signed: + for INBOUND, − for OUTBOUND
+  note      String?
+  createdAt DateTime        @default(now())
+}
+
+enum StockMoveType {
+  INBOUND
+  OUTBOUND
+  ADJUSTMENT
 }
 
 // Login account for the supplier-side B2B portal (independent of cafe staff).

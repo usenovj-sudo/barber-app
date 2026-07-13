@@ -5,6 +5,7 @@ import { CurrentSupplier, SupplierJwtGuard } from './supplier-jwt.guard';
 import { SupplierJwtPayload } from './supplier-jwt.strategy';
 import {
   QuoteItemDto,
+  StockMovementDto,
   SupplierLoginDto,
   SupplierProductDto,
 } from './dto/supplier-portal.dto';
@@ -126,5 +127,27 @@ export class SupplierPortalController {
   @ApiOperation({ summary: 'Revenue, deliveries and top products per cafe' })
   analytics(@CurrentSupplier() s: SupplierJwtPayload) {
     return this.portal.getAnalytics(s.supplierId);
+  }
+
+  // ─── Own warehouse ──────────────────────────────────────────────────────────
+
+  @Post('products/:id/stock')
+  @ApiBearerAuth()
+  @UseGuards(SupplierJwtGuard)
+  @ApiOperation({ summary: 'Record a stock movement (приход/расход/корректировка)' })
+  stock(
+    @CurrentSupplier() s: SupplierJwtPayload,
+    @Param('id') id: string,
+    @Body() dto: StockMovementDto,
+  ) {
+    return this.portal.recordMovement(s.supplierId, id, dto.delta, dto.type, dto.note);
+  }
+
+  @Get('stock/movements')
+  @ApiBearerAuth()
+  @UseGuards(SupplierJwtGuard)
+  @ApiOperation({ summary: 'Recent stock movements across the catalogue' })
+  movements(@CurrentSupplier() s: SupplierJwtPayload) {
+    return this.portal.getMovements(s.supplierId);
   }
 }

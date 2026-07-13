@@ -222,10 +222,16 @@ export class SupplierPortalService {
     if (request.status !== 'CONFIRMED') {
       throw new BadRequestException('Delivery tracking is available only for confirmed requests');
     }
-    return this.prisma.purchaseRequest.update({
+    const updated = await this.prisma.purchaseRequest.update({
       where: { id: requestId },
       data: { deliveryStatus: deliveryStatus as never },
     });
+
+    // On final delivery, draw down the supplier's own stock
+    if (deliveryStatus === 'DELIVERED') {
+      await this.autoOutboundForDelivery(supplierId, requestId);
+    }
+    return updated;
   }
 
   private async ownedRequest(supplierId: string, requestId: string) {
@@ -234,6 +240,104 @@ export class SupplierPortalService {
     });
     if (!request) throw new NotFoundException('Request not found');
     return request;
+  }
+
+  // ─── Own warehouse: stock levels & movements ───────────────────────────────
+
+  async recordMovement(
+    supplierId: string,
+    productId: string,
+    delta: number,
+    type: 'INBOUND' | 'OUTBOUND' | 'ADJUSTMENT',
+    note?: string,
+  ) {
+    const product = await this.prisma.supplierProduct.findFirst({
+      where: { id: productId, supplierId },
+    });
+    if (!product) throw new NotFoundException('Product not found');
+
+    const current = product.stockQty ?? new Prisma.Decimal(0);
+    const newQty = current.add(delta);
+    if (newQty.lessThan(0)) {
+      throw new BadRequestException(
+        `Недостаточно на складе: остаток ${current}, списание ${Math.abs(delta)}`,
+      );
+    }
+
+    const [, updated] = await this.prisma.$transaction([
+      this.prisma.supplierStockMovement.create({
+        data: { productId, type, quantity: new Prisma.Decimal(delta), note },
+      }),
+      this.prisma.supplierProduct.update({
+        where: { id: productId },
+        data: { stockQty: newQty },
+      }),
+    ]);
+
+    return { ...updated, stockQty: Number(updated.stockQty) };
+  }
+
+  async getMovements(supplierId: string, productId?: string) {
+    const movements = await this.prisma.supplierStockMovement.findMany({
+      where: {
+        product: { supplierId },
+        ...(productId ? { productId } : {}),
+      },
+      include: { product: { select: { name: true, unit: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    return movements.map((m) => ({
+      id: m.id,
+      productName: m.product.name,
+      unit: m.product.unit,
+      type: m.type,
+      quantity: Number(m.quantity),
+      note: m.note,
+      createdAt: m.createdAt,
+    }));
+  }
+
+  // Best-effort automatic outbound when goods are marked delivered: decrement the
+  // supplier's own stock for each delivered item (mapped via SupplierIngredientLink).
+  private async autoOutboundForDelivery(supplierId: string, requestId: string) {
+    try {
+      const request = await this.prisma.purchaseRequest.findUnique({
+        where: { id: requestId },
+        include: { items: { where: { supplierId } } },
+      });
+      if (!request) return;
+
+      for (const item of request.items) {
+        const link = await this.prisma.supplierIngredientLink.findFirst({
+          where: { supplierId, cafeId: request.cafeId, ingredientId: item.ingredientId },
+        });
+        if (!link) continue;
+        const product = await this.prisma.supplierProduct.findUnique({
+          where: { id: link.supplierProductId },
+        });
+        if (!product || product.stockQty == null) continue;
+
+        const qty = item.quantity;
+        const newQty = Prisma.Decimal.max(product.stockQty.sub(qty), new Prisma.Decimal(0));
+        await this.prisma.$transaction([
+          this.prisma.supplierStockMovement.create({
+            data: {
+              productId: product.id,
+              type: 'OUTBOUND',
+              quantity: qty.negated(),
+              note: 'Отгрузка по заявке',
+            },
+          }),
+          this.prisma.supplierProduct.update({
+            where: { id: product.id },
+            data: { stockQty: newQty },
+          }),
+        ]);
+      }
+    } catch {
+      // Stock bookkeeping must never break the delivery flow
+    }
   }
 
   // ─── Supplier analytics: revenue & history per cafe, top products ──────────

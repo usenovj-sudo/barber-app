@@ -74,7 +74,7 @@ function SupplierLogin({ onLogin }: { onLogin: () => void }) {
   );
 }
 
-type Tab = 'requests' | 'catalog' | 'analytics' | 'profile';
+type Tab = 'requests' | 'catalog' | 'warehouse' | 'analytics' | 'profile';
 
 function SupplierDashboard({ onLogout }: { onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>('requests');
@@ -89,7 +89,7 @@ function SupplierDashboard({ onLogout }: { onLogout: () => void }) {
 
       <div className="max-w-4xl mx-auto p-5">
         <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 mb-5">
-          {([['requests', 'Заявки'], ['catalog', 'Каталог'], ['analytics', 'Аналитика'], ['profile', 'Профиль']] as [Tab, string][]).map(([k, label]) => (
+          {([['requests', 'Заявки'], ['catalog', 'Каталог'], ['warehouse', 'Склад'], ['analytics', 'Аналитика'], ['profile', 'Профиль']] as [Tab, string][]).map(([k, label]) => (
             <button key={k} onClick={() => setTab(k)} className={`px-4 py-1.5 text-sm rounded-md ${tab === k ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
               {label}
             </button>
@@ -98,6 +98,7 @@ function SupplierDashboard({ onLogout }: { onLogout: () => void }) {
 
         {tab === 'profile' && <ProfileTab />}
         {tab === 'catalog' && <CatalogTab />}
+        {tab === 'warehouse' && <WarehouseTab />}
         {tab === 'analytics' && <AnalyticsTab />}
         {tab === 'requests' && <RequestsTab />}
       </div>
@@ -342,6 +343,83 @@ function AnalyticsTab() {
             </tbody>
           </table>
         ) : <div className="text-sm text-slate-400">Нет данных</div>}
+      </Card>
+    </div>
+  );
+}
+
+interface StockProduct { id: string; name: string; unit: string; stockQty: number | null }
+interface Movement { id: string; productName: string; unit: string; type: string; quantity: number; note?: string; createdAt: string }
+
+const MOVE_RU: Record<string, string> = { INBOUND: 'Приход', OUTBOUND: 'Расход', ADJUSTMENT: 'Корректировка' };
+
+function WarehouseTab() {
+  const qc = useQueryClient();
+  const { data: products } = useQuery({ queryKey: ['sup-products'], queryFn: async () => (await sapi.get<StockProduct[]>('/supplier/products')).data });
+  const { data: moves } = useQuery({ queryKey: ['sup-moves'], queryFn: async () => (await sapi.get<Movement[]>('/supplier/stock/movements')).data });
+
+  const move = useMutation({
+    mutationFn: ({ id, delta, type, note }: { id: string; delta: number; type: string; note?: string }) =>
+      sapi.post(`/supplier/products/${id}/stock`, { delta, type, note }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sup-products'] });
+      qc.invalidateQueries({ queryKey: ['sup-moves'] });
+    },
+  });
+
+  const ask = (id: string, sign: 1 | -1) => {
+    const raw = prompt(sign > 0 ? 'Приход — сколько добавить?' : 'Расход — сколько списать?');
+    const qty = Number(raw);
+    if (!qty || qty <= 0) return;
+    move.mutate({ id, delta: sign * qty, type: sign > 0 ? 'INBOUND' : 'OUTBOUND' });
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card className="overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-slate-500 text-left">
+            <tr><th className="font-normal px-5 py-3">Товар</th><th className="font-normal px-5 py-3 text-right">Остаток</th><th className="font-normal px-5 py-3 text-right">Движение</th></tr>
+          </thead>
+          <tbody>
+            {products?.map((p) => (
+              <tr key={p.id} className="border-t border-slate-100">
+                <td className="px-5 py-3 font-medium text-slate-700">{p.name}</td>
+                <td className="px-5 py-3 text-right tabular-nums">
+                  {p.stockQty == null ? <span className="text-slate-400">не ведётся</span> : <b>{p.stockQty.toLocaleString('ru-RU')} {p.unit}</b>}
+                </td>
+                <td className="px-5 py-3 text-right whitespace-nowrap">
+                  <button onClick={() => ask(p.id, 1)} className="text-emerald-600 hover:underline text-xs mr-3">+ приход</button>
+                  <button onClick={() => ask(p.id, -1)} className="text-red-500 hover:underline text-xs">− расход</button>
+                </td>
+              </tr>
+            ))}
+            {products?.length === 0 && <tr><td colSpan={3} className="px-5 py-6 text-center text-slate-400">Каталог пуст</td></tr>}
+          </tbody>
+        </table>
+      </Card>
+
+      <Card className="p-5">
+        <div className="font-medium mb-3">История движений</div>
+        {moves?.length ? (
+          <table className="w-full text-sm">
+            <tbody>
+              {moves.map((m) => (
+                <tr key={m.id} className="border-b border-slate-100">
+                  <td className="py-2 text-slate-500 whitespace-nowrap">{new Date(m.createdAt).toLocaleString('ru-RU')}</td>
+                  <td className="py-2 text-slate-700">{m.productName}</td>
+                  <td className="py-2">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${m.type === 'INBOUND' ? 'bg-emerald-100 text-emerald-700' : m.type === 'OUTBOUND' ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-600'}`}>{MOVE_RU[m.type]}</span>
+                    {m.note && <span className="text-xs text-slate-400 ml-2">{m.note}</span>}
+                  </td>
+                  <td className={`py-2 text-right tabular-nums ${m.quantity >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                    {m.quantity > 0 ? '+' : ''}{m.quantity} {m.unit}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : <div className="text-sm text-slate-400">Движений пока нет</div>}
       </Card>
     </div>
   );

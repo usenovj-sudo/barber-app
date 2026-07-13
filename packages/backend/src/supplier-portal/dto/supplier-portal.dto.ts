@@ -1,4 +1,4 @@
-import { IsBoolean, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -55,4 +55,20 @@ export class QuoteItemDto {
   @Min(0)
   @Type(() => Number)
   unitPrice: number;
+}
+
+export class StockMovementDto {
+  @ApiProperty({ example: 50, description: 'Signed quantity: + приход, − расход' })
+  @IsNumber()
+  @Type(() => Number)
+  delta: number;
+
+  @ApiProperty({ enum: ['INBOUND', 'OUTBOUND', 'ADJUSTMENT'] })
+  @IsEnum(['INBOUND', 'OUTBOUND', 'ADJUSTMENT'])
+  type: 'INBOUND' | 'OUTBOUND' | 'ADJUSTMENT';
+
+  @ApiPropertyOptional({ example: 'Поступление от фермера' })
+  @IsOptional()
+  @IsString()
+  note?: string;
 }
