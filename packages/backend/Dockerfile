@@ -39,5 +39,6 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/package.json ./package.json
 
 EXPOSE 3000
-# Apply migrations, then start the API
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node dist/main.js"]
+# Apply migrations; optionally seed demo data (AUTO_SEED=true, idempotent upserts);
+# then start the API.
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && ( [ \"$AUTO_SEED\" = \"true\" ] && node prisma/seed.js || true ) && node dist/main.js"]
