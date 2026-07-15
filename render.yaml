@@ -40,7 +40,9 @@ services:
   - type: web
     name: cafe-admin
     runtime: static
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @cafe/admin build
+    # Render's build image already ships pnpm at /usr/bin/pnpm; `corepack enable`
+    # would try to overwrite it on a read-only FS and fail (EROFS). Call pnpm directly.
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @cafe/admin build
     staticPublishPath: ./packages/admin/dist
     envVars:
       - key: VITE_API_URL     # ← backend URL (set in dashboard after backend deploys)
