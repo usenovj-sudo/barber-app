@@ -1,0 +1,53 @@
+# Render Blueprint — deploys the whole platform.
+# In Render: New → Blueprint → pick this repo. It creates two services below.
+# Database lives on Supabase (free) — paste its connection string into DATABASE_URL.
+#
+# After the first deploy you fill in 3 values in the Render dashboard:
+#   backend  DATABASE_URL     = Supabase connection string (port 5432)
+#   backend  ALLOWED_ORIGINS  = the admin site URL (https://cafe-admin.onrender.com)
+#   admin    VITE_API_URL     = the backend URL (https://cafe-backend.onrender.com)
+# See DEPLOY.md for the step-by-step.
+
+services:
+  # ─── Backend API (NestJS, Docker, always-on) ───────────────────────────────
+  - type: web
+    name: cafe-backend
+    runtime: docker
+    dockerfilePath: ./packages/backend/Dockerfile
+    dockerContext: .
+    region: frankfurt        # closest Render region to Kazakhstan
+    plan: starter            # always-on (~$7/mo); use "free" to test (sleeps when idle)
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: AUTO_SEED        # seed demo data (admin@arlan.kz / admin123) on first boot; idempotent
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true   # Render generates a strong secret
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: DATABASE_URL     # ← Supabase connection string (set in dashboard)
+        sync: false
+      - key: ALLOWED_ORIGINS  # ← admin site URL (set in dashboard after it deploys)
+        sync: false
+      - key: ANTHROPIC_API_KEY # optional — leave as placeholder for rule-based AI
+        value: sk-ant-placeholder
+      - key: TELEGRAM_BOT_TOKEN # optional — leave as changeme to disable Telegram
+        value: changeme
+
+  # ─── Admin SPA (static, free, global CDN) ──────────────────────────────────
+  - type: web
+    name: cafe-admin
+    runtime: static
+    # Render's build image already ships pnpm at /usr/bin/pnpm; `corepack enable`
+    # would try to overwrite it on a read-only FS and fail (EROFS). Call pnpm directly.
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @cafe/admin build
+    staticPublishPath: ./packages/admin/dist
+    envVars:
+      - key: VITE_API_URL     # ← backend URL (set in dashboard after backend deploys)
+        sync: false
+    routes:
+      - type: rewrite         # SPA fallback — every path serves index.html
+        source: /*
+        destination: /index.html

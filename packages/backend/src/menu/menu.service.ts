@@ -1,0 +1,302 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { RecipesService } from '../recipes/recipes.service';
+import { AiService } from '../ai/ai.service';
+import { CreateCategoryDto } from './dto/create-category.dto';
+import { CreateDishDto } from './dto/create-dish.dto';
+import { UpdateDishDto } from './dto/update-dish.dto';
+
+@Injectable()
+export class MenuService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly recipesService: RecipesService,
+    private readonly aiService: AiService,
+  ) {}
+
+  // ── AI: generate a dish + recipe from a name ────────────────────────────────
+  // Creates the dish, ensures each suggested ingredient exists (creating missing
+  // ones with stock 0), then saves an active recipe. The admin edits afterwards.
+  async aiGenerateDish(cafeId: string, dishName: string, userId: string) {
+    const cafe = await this.prisma.cafe.findUnique({ where: { id: cafeId } });
+    if (!cafe) throw new NotFoundException('Cafe not found');
+
+    const existing = await this.prisma.ingredient.findMany({ where: { cafeId } });
+    const generated = await this.aiService.generateDish(
+      cafe.name,
+      dishName,
+      existing.map((i) => ({
+        name: i.name,
+        unit: i.unit,
+        pricePerUnit: Number(i.pricePerUnit),
+      })),
+    );
+
+    // Resolve each suggested ingredient to a real Ingredient row (reuse by name).
+    const recipeItems: { ingredientId: string; quantity: number }[] = [];
+    for (const ing of generated.ingredients) {
+      let row = await this.prisma.ingredient.findFirst({
+        where: { cafeId, name: { equals: ing.name, mode: 'insensitive' } },
+      });
+      if (!row) {
+        row = await this.prisma.ingredient.create({
+          data: {
+            cafeId,
+            name: ing.name,
+            unit: ing.unit,
+            stockQty: 0,
+            pricePerUnit: new Prisma.Decimal(ing.estimatedPricePerUnit),
+            minStockLevel: 0,
+          },
+        });
+      }
+      if (ing.quantity > 0) recipeItems.push({ ingredientId: row.id, quantity: ing.quantity });
+    }
+
+    // Create the dish, then its active recipe, in one transaction.
+    const dish = await this.prisma.$transaction(async (tx) => {
+      const d = await tx.dish.create({
+        data: {
+          cafeId,
+          name: generated.name,
+          description: generated.description,
+          price: new Prisma.Decimal(generated.suggestedPrice),
+          section: generated.section,
+          isAvailable: true,
+        },
+      });
+      if (recipeItems.length) {
+        await tx.recipe.create({
+          data: {
+            dishId: d.id,
+            version: 1,
+            isActive: true,
+            items: { create: recipeItems.map((it) => ({ ingredientId: it.ingredientId, quantity: new Prisma.Decimal(it.quantity) })) },
+          },
+        });
+      }
+      return d;
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        cafeId, userId, action: 'CREATE', entity: 'Dish', entityId: dish.id,
+        diff: { aiGenerated: true, source: generated.source, dishName } as object,
+      },
+    });
+
+    const full = await this.getDish(cafeId, dish.id);
+    return { ...full, aiSource: generated.source, aiNote: generated.note };
+  }
+
+  // ── Categories ────────────────────────────────────────────────────────────
+
+  async getCategories(cafeId: string) {
+    return this.prisma.category.findMany({
+      where: { cafeId },
+      orderBy: { sortOrder: 'asc' },
+      include: { _count: { select: { dishes: true } } },
+    });
+  }
+
+  async createCategory(cafeId: string, dto: CreateCategoryDto) {
+    return this.prisma.category.create({
+      data: { cafeId, name: dto.name, sortOrder: dto.sortOrder ?? 0 },
+    });
+  }
+
+  async deleteCategory(cafeId: string, id: string) {
+    const cat = await this.prisma.category.findFirst({ where: { id, cafeId } });
+    if (!cat) throw new NotFoundException('Category not found');
+    await this.prisma.category.delete({ where: { id } });
+    return { message: 'Category deleted' };
+  }
+
+  // ── Dishes ────────────────────────────────────────────────────────────────
+
+  // Public-facing menu: includes availablePortions and costPrice for each dish
+  async getMenu(cafeId: string) {
+    const dishes = await this.prisma.dish.findMany({
+      where: { cafeId },
+      include: {
+        category: { select: { id: true, name: true, sortOrder: true } },
+        modifiers: true,
+      },
+      orderBy: [{ category: { sortOrder: 'asc' } }, { name: 'asc' }],
+    });
+
+    // Batch calculate portions for all dishes in one pass
+    const dishIds = dishes.map((d) => d.id);
+    const [portionsMap, costsMap] = await Promise.all([
+      this.recipesService.calculateAvailablePortionsBatch(dishIds),
+      this.calculateCostsBatch(dishIds),
+    ]);
+
+    return dishes.map((dish) => ({
+      ...dish,
+      price: Number(dish.price),
+      availablePortions: portionsMap[dish.id] ?? 0,
+      costPrice: costsMap[dish.id] ?? 0,
+      margin: Number(dish.price) - (costsMap[dish.id] ?? 0),
+      marginPct:
+        Number(dish.price) > 0
+          ? Math.round(((Number(dish.price) - (costsMap[dish.id] ?? 0)) / Number(dish.price)) * 100)
+          : 0,
+    }));
+  }
+
+  async getDish(cafeId: string, id: string) {
+    const dish = await this.prisma.dish.findFirst({
+      where: { id, cafeId },
+      include: {
+        category: true,
+        modifiers: true,
+        recipes: {
+          where: { isActive: true },
+          include: { items: { include: { ingredient: true } } },
+        },
+      },
+    });
+    if (!dish) throw new NotFoundException('Dish not found');
+
+    const [portions, cost] = await Promise.all([
+      this.recipesService.calculateAvailablePortions(id),
+      this.recipesService.calculateDishCost(id),
+    ]);
+
+    return {
+      ...dish,
+      price: Number(dish.price),
+      availablePortions: portions,
+      costPrice: cost,
+      margin: Number(dish.price) - cost,
+    };
+  }
+
+  async createDish(cafeId: string, dto: CreateDishDto, userId: string) {
+    const dish = await this.prisma.dish.create({
+      data: {
+        cafeId,
+        name: dto.name,
+        price: dto.price,
+        description: dto.description,
+        photoUrl: dto.photoUrl,
+        categoryId: dto.categoryId,
+        section: dto.section,
+        isAvailable: dto.isAvailable ?? true,
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: { cafeId, userId, action: 'CREATE', entity: 'Dish', entityId: dish.id, diff: dto as object },
+    });
+
+    return dish;
+  }
+
+  async updateDish(cafeId: string, id: string, dto: UpdateDishDto, userId: string) {
+    const dish = await this.prisma.dish.findFirst({ where: { id, cafeId } });
+    if (!dish) throw new NotFoundException('Dish not found');
+
+    const updated = await this.prisma.dish.update({
+      where: { id },
+      data: {
+        ...(dto.name && { name: dto.name }),
+        ...(dto.price !== undefined && { price: dto.price }),
+        ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.photoUrl !== undefined && { photoUrl: dto.photoUrl }),
+        ...(dto.categoryId !== undefined && { categoryId: dto.categoryId }),
+        ...(dto.section !== undefined && { section: dto.section }),
+        ...(dto.isAvailable !== undefined && { isAvailable: dto.isAvailable }),
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: { cafeId, userId, action: 'UPDATE', entity: 'Dish', entityId: id, diff: { before: dish, changes: dto } as object },
+    });
+
+    return updated;
+  }
+
+  async toggleAvailability(cafeId: string, id: string, userId: string) {
+    const dish = await this.prisma.dish.findFirst({ where: { id, cafeId } });
+    if (!dish) throw new NotFoundException('Dish not found');
+
+    const updated = await this.prisma.dish.update({
+      where: { id },
+      data: { isAvailable: !dish.isAvailable },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        cafeId, userId, action: 'UPDATE', entity: 'Dish', entityId: id,
+        diff: { isAvailable: updated.isAvailable },
+      },
+    });
+
+    return updated;
+  }
+
+  async deleteDish(cafeId: string, id: string, userId: string) {
+    const dish = await this.prisma.dish.findFirst({ where: { id, cafeId } });
+    if (!dish) throw new NotFoundException('Dish not found');
+    await this.prisma.dish.delete({ where: { id } });
+
+    await this.prisma.auditLog.create({
+      data: { cafeId, userId, action: 'DELETE', entity: 'Dish', entityId: id },
+    });
+
+    return { message: 'Dish deleted' };
+  }
+
+  // ── Modifiers (priced add-ons per dish) ────────────────────────────────────
+
+  async listModifiers(cafeId: string, dishId: string) {
+    const dish = await this.prisma.dish.findFirst({ where: { id: dishId, cafeId } });
+    if (!dish) throw new NotFoundException('Dish not found');
+    const mods = await this.prisma.modifier.findMany({
+      where: { dishId },
+      orderBy: { name: 'asc' },
+    });
+    return mods.map((m) => ({ ...m, priceDelta: Number(m.priceDelta) }));
+  }
+
+  async addModifier(cafeId: string, dishId: string, name: string, priceDelta: number) {
+    const dish = await this.prisma.dish.findFirst({ where: { id: dishId, cafeId } });
+    if (!dish) throw new NotFoundException('Dish not found');
+    const mod = await this.prisma.modifier.create({
+      data: { dishId, name, priceDelta: new Prisma.Decimal(priceDelta ?? 0) },
+    });
+    return { ...mod, priceDelta: Number(mod.priceDelta) };
+  }
+
+  async deleteModifier(cafeId: string, id: string) {
+    const mod = await this.prisma.modifier.findFirst({
+      where: { id, dish: { cafeId } },
+    });
+    if (!mod) throw new NotFoundException('Modifier not found');
+    await this.prisma.modifier.delete({ where: { id } });
+    return { message: 'Modifier deleted' };
+  }
+
+  // ── Private helpers ───────────────────────────────────────────────────────
+
+  private async calculateCostsBatch(dishIds: string[]): Promise<Record<string, number>> {
+    if (dishIds.length === 0) return {};
+
+    const recipes = await this.prisma.recipe.findMany({
+      where: { dishId: { in: dishIds }, isActive: true },
+      include: { items: { include: { ingredient: { select: { pricePerUnit: true } } } } },
+    });
+
+    const result: Record<string, number> = {};
+    for (const recipe of recipes) {
+      result[recipe.dishId] = recipe.items.reduce(
+        (sum, item) => sum + Number(item.quantity) * Number(item.ingredient.pricePerUnit),
+        0,
+      );
+    }
+    return result;
+  }
+}
