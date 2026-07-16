@@ -208,6 +208,34 @@ async function main() {
     });
   }
 
+  // Link cafe ingredients to this supplier's products so the AI agent can
+  // actually pick a supplier (and its minOrderQty) when it plans a purchase.
+  const ingredientLinks = [
+    { ingredientId: 'seed-ing-rice', supplierProductId: 'sp-rice-agro' },
+    { ingredientId: 'seed-ing-carrot', supplierProductId: 'sp-carrot-agro' },
+    { ingredientId: 'seed-ing-lamb', supplierProductId: 'sp-lamb-agro' },
+  ];
+  for (const link of ingredientLinks) {
+    await prisma.supplierIngredientLink.upsert({
+      where: {
+        cafeId_ingredientId_supplierProductId: {
+          cafeId: cafe.id,
+          ingredientId: link.ingredientId,
+          supplierProductId: link.supplierProductId,
+        },
+      },
+      update: {},
+      create: {
+        cafeId: cafe.id,
+        ingredientId: link.ingredientId,
+        supplierId: supplier.id,
+        supplierProductId: link.supplierProductId,
+        isVerified: true,
+      },
+    });
+  }
+  console.log('✓ Ingredient↔supplier links created');
+
   const supPasswordHash = await bcrypt.hash('agro123', 12);
   await prisma.supplierUser.upsert({
     where: { email: 'agro@postavka.kz' },
