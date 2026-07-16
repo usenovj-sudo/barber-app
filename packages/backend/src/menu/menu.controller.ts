@@ -15,6 +15,7 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { CreateDishDto } from './dto/create-dish.dto';
 import { UpdateDishDto } from './dto/update-dish.dto';
 import { CreateModifierDto } from './dto/create-modifier.dto';
+import { AiGenerateDishDto } from './dto/ai-generate-dish.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -62,6 +63,17 @@ export class MenuController {
   @ApiOperation({ summary: 'Get single dish with recipe and stock info' })
   getDish(@Param('cafeId') cafeId: string, @Param('id') id: string) {
     return this.menuService.getDish(cafeId, id);
+  }
+
+  @Post('menu/ai-generate')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'AI: generate a dish + recipe from a name (admin only)' })
+  aiGenerateDish(
+    @Param('cafeId') cafeId: string,
+    @Body() dto: AiGenerateDishDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.menuService.aiGenerateDish(cafeId, dto.dishName, user.sub);
   }
 
   @Post('dishes')

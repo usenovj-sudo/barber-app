@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RecipesService } from '../recipes/recipes.service';
+import { AiService } from '../ai/ai.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { CreateDishDto } from './dto/create-dish.dto';
 import { UpdateDishDto } from './dto/update-dish.dto';
@@ -11,7 +12,83 @@ export class MenuService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly recipesService: RecipesService,
+    private readonly aiService: AiService,
   ) {}
+
+  // ── AI: generate a dish + recipe from a name ────────────────────────────────
+  // Creates the dish, ensures each suggested ingredient exists (creating missing
+  // ones with stock 0), then saves an active recipe. The admin edits afterwards.
+  async aiGenerateDish(cafeId: string, dishName: string, userId: string) {
+    const cafe = await this.prisma.cafe.findUnique({ where: { id: cafeId } });
+    if (!cafe) throw new NotFoundException('Cafe not found');
+
+    const existing = await this.prisma.ingredient.findMany({ where: { cafeId } });
+    const generated = await this.aiService.generateDish(
+      cafe.name,
+      dishName,
+      existing.map((i) => ({
+        name: i.name,
+        unit: i.unit,
+        pricePerUnit: Number(i.pricePerUnit),
+      })),
+    );
+
+    // Resolve each suggested ingredient to a real Ingredient row (reuse by name).
+    const recipeItems: { ingredientId: string; quantity: number }[] = [];
+    for (const ing of generated.ingredients) {
+      let row = await this.prisma.ingredient.findFirst({
+        where: { cafeId, name: { equals: ing.name, mode: 'insensitive' } },
+      });
+      if (!row) {
+        row = await this.prisma.ingredient.create({
+          data: {
+            cafeId,
+            name: ing.name,
+            unit: ing.unit,
+            stockQty: 0,
+            pricePerUnit: new Prisma.Decimal(ing.estimatedPricePerUnit),
+            minStockLevel: 0,
+          },
+        });
+      }
+      if (ing.quantity > 0) recipeItems.push({ ingredientId: row.id, quantity: ing.quantity });
+    }
+
+    // Create the dish, then its active recipe, in one transaction.
+    const dish = await this.prisma.$transaction(async (tx) => {
+      const d = await tx.dish.create({
+        data: {
+          cafeId,
+          name: generated.name,
+          description: generated.description,
+          price: new Prisma.Decimal(generated.suggestedPrice),
+          section: generated.section,
+          isAvailable: true,
+        },
+      });
+      if (recipeItems.length) {
+        await tx.recipe.create({
+          data: {
+            dishId: d.id,
+            version: 1,
+            isActive: true,
+            items: { create: recipeItems.map((it) => ({ ingredientId: it.ingredientId, quantity: new Prisma.Decimal(it.quantity) })) },
+          },
+        });
+      }
+      return d;
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        cafeId, userId, action: 'CREATE', entity: 'Dish', entityId: dish.id,
+        diff: { aiGenerated: true, source: generated.source, dishName } as object,
+      },
+    });
+
+    const full = await this.getDish(cafeId, dish.id);
+    return { ...full, aiSource: generated.source, aiNote: generated.note };
+  }
 
   // ── Categories ────────────────────────────────────────────────────────────
 

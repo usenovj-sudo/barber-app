@@ -63,6 +63,32 @@ export interface AgentProcurementPlan {
   totalEstimatedAmount: number;
 }
 
+// ─── AI menu / dish generation ──────────────────────────────────────────────
+
+export interface GeneratedIngredient {
+  name: string;
+  unit: string; // kg | l | pcs | g …
+  quantity: number; // per 1 portion, in `unit`
+  estimatedPricePerUnit: number; // ₸ per unit — a starting guess the admin can edit
+}
+
+export interface GeneratedDish {
+  name: string;
+  description: string;
+  section: string; // hot | cold | bar | dessert
+  suggestedPrice: number; // ₸
+  ingredients: GeneratedIngredient[];
+  source: 'ai' | 'rules'; // where the recipe came from (honest to the admin)
+  note: string;
+}
+
+// Ingredient the caller already has, so generation can reuse names/units
+export interface ExistingIngredient {
+  name: string;
+  unit: string;
+  pricePerUnit: number;
+}
+
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
@@ -318,6 +344,203 @@ ${JSON.stringify(ingredients, null, 2)}`;
         : 'Недостаточно данных о продажах для прогноза. Нужна история оплаченных заказов.',
       forecast: history,
       insights,
+    };
+  }
+
+  // ─── Generate a dish + its recipe from a name ─────────────────────────────
+
+  async generateDish(
+    cafeName: string,
+    dishName: string,
+    existing: ExistingIngredient[],
+  ): Promise<GeneratedDish> {
+    if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY.startsWith('sk-ant-placeholder')) {
+      this.logger.warn('No real ANTHROPIC_API_KEY — using rule-based dish generation');
+      return this.ruleBasedDish(dishName, existing);
+    }
+
+    const systemPrompt = `Ты — шеф-повар и технолог кафе "${cafeName}".
+По названию блюда составь технологическую карту: описание, кухонная секция (hot/cold/bar/dessert),
+разумная цена продажи в тенге (₸) и список ингредиентов с количеством НА ОДНУ ПОРЦИЮ.
+Единицы: kg, l, pcs, g. Если у кафе уже есть похожий ингредиент — используй его точное название и единицу.
+Отвечай ТОЛЬКО через инструмент create_dish.`;
+
+    const userMessage = `Блюдо: "${dishName}".
+Ингредиенты, которые уже есть у кафе (используй их названия/единицы, где подходит):
+${existing.length ? JSON.stringify(existing, null, 2) : '(пока нет своих ингредиентов)'}`;
+
+    try {
+      const response = await this.client.messages.create({
+        model: 'claude-sonnet-5',
+        max_tokens: 2000,
+        system: systemPrompt,
+        tools: [
+          {
+            name: 'create_dish',
+            description: 'Создать блюдо с рецептом (ингредиенты на 1 порцию)',
+            input_schema: {
+              type: 'object' as const,
+              properties: {
+                name: { type: 'string' },
+                description: { type: 'string', description: 'Короткое аппетитное описание (1 предложение)' },
+                section: { type: 'string', enum: ['hot', 'cold', 'bar', 'dessert'] },
+                suggestedPrice: { type: 'number', description: 'Цена продажи в ₸' },
+                ingredients: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      name: { type: 'string' },
+                      unit: { type: 'string', enum: ['kg', 'l', 'pcs', 'g'] },
+                      quantity: { type: 'number', description: 'Количество на 1 порцию' },
+                      estimatedPricePerUnit: { type: 'number', description: 'Ориентировочная цена за единицу, ₸' },
+                    },
+                    required: ['name', 'unit', 'quantity', 'estimatedPricePerUnit'],
+                  },
+                },
+                note: { type: 'string', description: 'Замечание повару (1 предложение)' },
+              },
+              required: ['name', 'description', 'section', 'suggestedPrice', 'ingredients', 'note'],
+            },
+          },
+        ],
+        tool_choice: { type: 'tool', name: 'create_dish' },
+        messages: [{ role: 'user', content: userMessage }],
+      });
+
+      const toolUse = response.content.find((c) => c.type === 'tool_use');
+      if (!toolUse || toolUse.type !== 'tool_use') {
+        throw new Error('No tool_use in Claude response');
+      }
+      const out = toolUse.input as Omit<GeneratedDish, 'source'>;
+      return { ...out, source: 'ai' };
+    } catch (err) {
+      this.logger.error('Claude dish generation error, using rule-based:', err);
+      return this.ruleBasedDish(dishName, existing);
+    }
+  }
+
+  // Rule-based recipe knowledge base — runs when no ANTHROPIC_API_KEY is set.
+  private ruleBasedDish(dishName: string, existing: ExistingIngredient[]): GeneratedDish {
+    const q = dishName.trim().toLowerCase();
+
+    // Each template: keywords that match the dish name → base recipe (per portion).
+    type Tpl = {
+      keys: string[];
+      section: string;
+      ingredients: GeneratedIngredient[];
+    };
+    const KB: Tpl[] = [
+      { keys: ['плов', 'palov', 'osh'], section: 'hot', ingredients: [
+        { name: 'Рис', unit: 'kg', quantity: 0.15, estimatedPricePerUnit: 350 },
+        { name: 'Баранина', unit: 'kg', quantity: 0.12, estimatedPricePerUnit: 3200 },
+        { name: 'Морковь', unit: 'kg', quantity: 0.08, estimatedPricePerUnit: 120 },
+        { name: 'Лук', unit: 'kg', quantity: 0.05, estimatedPricePerUnit: 100 },
+        { name: 'Масло растительное', unit: 'l', quantity: 0.03, estimatedPricePerUnit: 800 },
+      ]},
+      { keys: ['лагман', 'lagman'], section: 'hot', ingredients: [
+        { name: 'Мука', unit: 'kg', quantity: 0.12, estimatedPricePerUnit: 200 },
+        { name: 'Говядина', unit: 'kg', quantity: 0.1, estimatedPricePerUnit: 2600 },
+        { name: 'Морковь', unit: 'kg', quantity: 0.05, estimatedPricePerUnit: 120 },
+        { name: 'Перец болгарский', unit: 'kg', quantity: 0.04, estimatedPricePerUnit: 500 },
+        { name: 'Лук', unit: 'kg', quantity: 0.04, estimatedPricePerUnit: 100 },
+      ]},
+      { keys: ['манты', 'manty'], section: 'hot', ingredients: [
+        { name: 'Мука', unit: 'kg', quantity: 0.12, estimatedPricePerUnit: 200 },
+        { name: 'Фарш', unit: 'kg', quantity: 0.1, estimatedPricePerUnit: 2400 },
+        { name: 'Лук', unit: 'kg', quantity: 0.05, estimatedPricePerUnit: 100 },
+      ]},
+      { keys: ['шашлык', 'шашлик', 'kebab', 'кебаб', 'шаурма', 'shaurma'], section: 'hot', ingredients: [
+        { name: 'Мясо', unit: 'kg', quantity: 0.25, estimatedPricePerUnit: 2800 },
+        { name: 'Лук', unit: 'kg', quantity: 0.05, estimatedPricePerUnit: 100 },
+      ]},
+      { keys: ['борщ', 'borsch', 'суп', 'soup', 'шурпа', 'shurpa'], section: 'hot', ingredients: [
+        { name: 'Говядина', unit: 'kg', quantity: 0.08, estimatedPricePerUnit: 2600 },
+        { name: 'Картофель', unit: 'kg', quantity: 0.1, estimatedPricePerUnit: 90 },
+        { name: 'Морковь', unit: 'kg', quantity: 0.04, estimatedPricePerUnit: 120 },
+        { name: 'Капуста', unit: 'kg', quantity: 0.06, estimatedPricePerUnit: 90 },
+        { name: 'Лук', unit: 'kg', quantity: 0.03, estimatedPricePerUnit: 100 },
+      ]},
+      { keys: ['оливье', 'olivie', 'салат', 'salad', 'цезарь', 'caesar'], section: 'cold', ingredients: [
+        { name: 'Картофель', unit: 'kg', quantity: 0.08, estimatedPricePerUnit: 90 },
+        { name: 'Морковь', unit: 'kg', quantity: 0.03, estimatedPricePerUnit: 120 },
+        { name: 'Яйцо', unit: 'pcs', quantity: 1, estimatedPricePerUnit: 60 },
+        { name: 'Майонез', unit: 'l', quantity: 0.03, estimatedPricePerUnit: 900 },
+        { name: 'Курица', unit: 'kg', quantity: 0.05, estimatedPricePerUnit: 1400 },
+      ]},
+      { keys: ['пицца', 'pizza'], section: 'hot', ingredients: [
+        { name: 'Мука', unit: 'kg', quantity: 0.2, estimatedPricePerUnit: 200 },
+        { name: 'Сыр', unit: 'kg', quantity: 0.1, estimatedPricePerUnit: 3500 },
+        { name: 'Томатный соус', unit: 'l', quantity: 0.05, estimatedPricePerUnit: 700 },
+      ]},
+      { keys: ['бургер', 'burger', 'гамбургер'], section: 'hot', ingredients: [
+        { name: 'Булка', unit: 'pcs', quantity: 1, estimatedPricePerUnit: 120 },
+        { name: 'Котлета', unit: 'pcs', quantity: 1, estimatedPricePerUnit: 400 },
+        { name: 'Сыр', unit: 'kg', quantity: 0.02, estimatedPricePerUnit: 3500 },
+        { name: 'Овощи', unit: 'kg', quantity: 0.05, estimatedPricePerUnit: 400 },
+      ]},
+      { keys: ['паста', 'pasta', 'спагетти', 'spaghetti', 'макарон'], section: 'hot', ingredients: [
+        { name: 'Паста', unit: 'kg', quantity: 0.12, estimatedPricePerUnit: 400 },
+        { name: 'Соус', unit: 'l', quantity: 0.08, estimatedPricePerUnit: 700 },
+        { name: 'Сыр', unit: 'kg', quantity: 0.02, estimatedPricePerUnit: 3500 },
+      ]},
+      { keys: ['чай', 'tea', 'çay'], section: 'bar', ingredients: [
+        { name: 'Чай', unit: 'kg', quantity: 0.005, estimatedPricePerUnit: 6000 },
+        { name: 'Сахар', unit: 'kg', quantity: 0.02, estimatedPricePerUnit: 400 },
+      ]},
+      { keys: ['кофе', 'coffee', 'капучино', 'латте', 'эспрессо', 'americano', 'американо'], section: 'bar', ingredients: [
+        { name: 'Кофе', unit: 'kg', quantity: 0.012, estimatedPricePerUnit: 9000 },
+        { name: 'Молоко', unit: 'l', quantity: 0.15, estimatedPricePerUnit: 500 },
+      ]},
+      { keys: ['сок', 'juice', 'лимонад', 'lemonade', 'компот', 'морс'], section: 'bar', ingredients: [
+        { name: 'Сок концентрат', unit: 'l', quantity: 0.05, estimatedPricePerUnit: 1200 },
+        { name: 'Вода', unit: 'l', quantity: 0.2, estimatedPricePerUnit: 50 },
+        { name: 'Сахар', unit: 'kg', quantity: 0.01, estimatedPricePerUnit: 400 },
+      ]},
+      { keys: ['торт', 'десерт', 'dessert', 'пирожное', 'чизкейк', 'cake'], section: 'dessert', ingredients: [
+        { name: 'Мука', unit: 'kg', quantity: 0.08, estimatedPricePerUnit: 200 },
+        { name: 'Сахар', unit: 'kg', quantity: 0.05, estimatedPricePerUnit: 400 },
+        { name: 'Яйцо', unit: 'pcs', quantity: 2, estimatedPricePerUnit: 60 },
+        { name: 'Масло сливочное', unit: 'kg', quantity: 0.04, estimatedPricePerUnit: 3000 },
+      ]},
+    ];
+
+    const tpl = KB.find((t) => t.keys.some((k) => q.includes(k)));
+
+    // Snap a generated ingredient to an existing cafe ingredient (same name) so
+    // we reuse its unit & real price instead of creating a duplicate.
+    const snap = (ing: GeneratedIngredient): GeneratedIngredient => {
+      const match = existing.find((e) => e.name.toLowerCase() === ing.name.toLowerCase());
+      return match
+        ? { ...ing, unit: match.unit, estimatedPricePerUnit: match.pricePerUnit || ing.estimatedPricePerUnit }
+        : ing;
+    };
+
+    const ingredients = (tpl
+      ? tpl.ingredients
+      : [
+          // Unknown dish → honest generic skeleton the admin fills in.
+          { name: 'Основной ингредиент', unit: 'kg', quantity: 0.15, estimatedPricePerUnit: 1000 },
+          { name: 'Гарнир', unit: 'kg', quantity: 0.1, estimatedPricePerUnit: 300 },
+          { name: 'Специи и масло', unit: 'kg', quantity: 0.02, estimatedPricePerUnit: 800 },
+        ]
+    ).map(snap);
+
+    const cost = ingredients.reduce((s, i) => s + i.quantity * i.estimatedPricePerUnit, 0);
+    // Suggest a price at ~3× food cost, rounded up to the nearest 50 ₸.
+    const suggestedPrice = Math.max(50, Math.ceil((cost * 3) / 50) * 50);
+
+    const name = dishName.trim().replace(/^./, (c) => c.toUpperCase());
+    return {
+      name,
+      description: tpl ? `${name} — по классическому рецепту.` : `${name}.`,
+      section: tpl?.section ?? 'hot',
+      suggestedPrice,
+      ingredients,
+      source: 'rules',
+      note: tpl
+        ? 'Рецепт по базовой рецептуре — проверьте количество ингредиентов и цену под своё кафе.'
+        : 'Блюдо не распознано — задан черновой состав. Отредактируйте ингредиенты и количество под свой рецепт.',
     };
   }
 }

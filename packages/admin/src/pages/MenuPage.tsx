@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -29,6 +29,8 @@ export function MenuPage() {
   const queryClient = useQueryClient();
   const [editDish, setEditDish] = useState<Dish | 'new' | null>(null);
   const [modDish, setModDish] = useState<Dish | null>(null);
+  const [recipeDish, setRecipeDish] = useState<Dish | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
   const [catOpen, setCatOpen] = useState(false);
   const menuKey = ['menu', cafeId];
 
@@ -68,6 +70,9 @@ export function MenuPage() {
           <div className="flex gap-2">
             <Button variant="ghost" onClick={() => setCatOpen(true)}>
               + Категория
+            </Button>
+            <Button variant="ghost" onClick={() => setAiOpen(true)}>
+              🤖 AI-блюдо
             </Button>
             <Button onClick={() => setEditDish('new')}>+ Блюдо</Button>
           </div>
@@ -126,6 +131,12 @@ export function MenuPage() {
                           править
                         </button>
                         <button
+                          onClick={() => setRecipeDish(d)}
+                          className="text-slate-500 hover:underline text-xs mr-3"
+                        >
+                          состав
+                        </button>
+                        <button
                           onClick={() => setModDish(d)}
                           className="text-slate-500 hover:underline text-xs mr-3"
                         >
@@ -165,7 +176,291 @@ export function MenuPage() {
         />
       )}
       {modDish && <ModifiersModal dish={modDish} onClose={() => setModDish(null)} onSaved={invalidate} />}
+      {recipeDish && (
+        <RecipeModal dish={recipeDish} onClose={() => setRecipeDish(null)} onSaved={invalidate} />
+      )}
+      {aiOpen && (
+        <AiDishModal
+          onClose={() => setAiOpen(false)}
+          onCreated={(dish) => {
+            invalidate();
+            setAiOpen(false);
+            setRecipeDish(dish); // open the recipe editor on the freshly generated dish
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+// ── AI dish generation ────────────────────────────────────────────────────────
+
+interface GenIngredient {
+  name: string;
+  unit: string;
+  quantity: number;
+  ingredient?: { name: string; unit: string };
+}
+
+function AiDishModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (dish: Dish) => void;
+}) {
+  const { cafeId } = useAuth();
+  const [name, setName] = useState('');
+  const [result, setResult] = useState<
+    (Dish & { aiSource?: string; aiNote?: string; recipes?: { items: GenIngredient[] }[] }) | null
+  >(null);
+
+  const gen = useMutation({
+    mutationFn: async () =>
+      (await api.post(`/cafes/${cafeId}/menu/ai-generate`, { dishName: name })).data as Dish & {
+        aiSource?: string;
+        aiNote?: string;
+        recipes?: { items: GenIngredient[] }[];
+      },
+    onSuccess: (d) => setResult(d),
+  });
+
+  const items = result?.recipes?.[0]?.items ?? [];
+
+  return (
+    <Modal title="🤖 AI создаёт блюдо" onClose={onClose}>
+      {!result ? (
+        <>
+          <p className="text-xs text-slate-500 mb-3">
+            Напишите название блюда — AI создаст его с описанием, ценой и составом ингредиентов.
+            Потом всё можно отредактировать.
+          </p>
+          <Field label="Название блюда">
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Например: Лагман, Цезарь, Капучино"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && name.trim().length >= 2 && !gen.isPending) gen.mutate();
+              }}
+            />
+          </Field>
+          {gen.error && <ErrorBox error={gen.error} />}
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="ghost" onClick={onClose}>
+              Отмена
+            </Button>
+            <Button onClick={() => gen.mutate()} disabled={gen.isPending || name.trim().length < 2}>
+              {gen.isPending ? '🤖 Генерирую…' : 'Создать блюдо'}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-semibold text-slate-800">{result.name}</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-brand-50 text-brand-600">
+                {result.aiSource === 'ai' ? '🤖 AI' : '📋 по рецептуре'}
+              </span>
+            </div>
+            {result.description && (
+              <div className="text-sm text-slate-500 italic">{result.description}</div>
+            )}
+            <div className="text-sm text-slate-600 mt-1">
+              Цена: <b>{tenge(result.price)}</b> · себестоимость: {tenge(result.costPrice)}
+            </div>
+          </div>
+
+          <div className="text-xs font-medium text-slate-500 mb-1">Состав (на 1 порцию):</div>
+          <ul className="text-sm mb-3 border rounded-lg divide-y divide-slate-100">
+            {items.map((it, i) => (
+              <li key={i} className="flex justify-between px-3 py-1.5">
+                <span className="text-slate-700">{it.ingredient?.name ?? it.name}</span>
+                <span className="tabular-nums text-slate-500">
+                  {it.quantity} {it.ingredient?.unit ?? it.unit}
+                </span>
+              </li>
+            ))}
+            {items.length === 0 && <li className="px-3 py-2 text-slate-400">Без ингредиентов</li>}
+          </ul>
+
+          {result.aiNote && (
+            <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 mb-3">
+              💡 {result.aiNote}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => onCreated(result)}>Готово — открыть состав</Button>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+
+// ── Recipe editor (ingredients per portion) ───────────────────────────────────
+
+interface CafeIngredient {
+  id: string;
+  name: string;
+  unit: string;
+  pricePerUnit: number;
+}
+interface RecipeRow {
+  ingredientId: string;
+  quantity: number;
+}
+
+function RecipeModal({
+  dish,
+  onClose,
+  onSaved,
+}: {
+  dish: Dish;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { cafeId } = useAuth();
+  const [rows, setRows] = useState<RecipeRow[] | null>(null);
+  const [addId, setAddId] = useState('');
+  const [addQty, setAddQty] = useState(0.1);
+
+  const { data: ingredients } = useQuery({
+    queryKey: ['ingredients', cafeId],
+    queryFn: async () => (await api.get<CafeIngredient[]>(`/cafes/${cafeId}/ingredients`)).data,
+  });
+  const { data: recipe, isLoading } = useQuery({
+    queryKey: ['recipe', cafeId, dish.id],
+    queryFn: async () =>
+      (await api.get<{ items: { ingredientId: string; quantity: number }[] } | null>(
+        `/cafes/${cafeId}/dishes/${dish.id}/recipe`,
+      )).data,
+  });
+
+  // Seed local editable rows once the recipe loads.
+  useEffect(() => {
+    if (rows === null && !isLoading) {
+      setRows((recipe?.items ?? []).map((i) => ({ ingredientId: i.ingredientId, quantity: i.quantity })));
+    }
+  }, [rows, isLoading, recipe]);
+
+  const byId = new Map((ingredients ?? []).map((i) => [i.id, i]));
+  const current = rows ?? [];
+  const cost = current.reduce((s, r) => s + r.quantity * (byId.get(r.ingredientId)?.pricePerUnit ?? 0), 0);
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.post(`/cafes/${cafeId}/dishes/${dish.id}/recipe`, {
+        items: current.filter((r) => r.quantity > 0),
+      }),
+    onSuccess: () => {
+      onSaved();
+      onClose();
+    },
+  });
+
+  const available = (ingredients ?? []).filter((i) => !current.some((r) => r.ingredientId === i.id));
+
+  return (
+    <Modal title={`Состав: ${dish.name}`} onClose={onClose}>
+      <p className="text-xs text-slate-500 mb-3">
+        Количество каждого ингредиента на <b>1 порцию</b>. По этому составу считаются
+        себестоимость и сколько порций можно приготовить из остатков.
+      </p>
+
+      {isLoading ? (
+        <Spinner />
+      ) : (
+        <>
+          <ul className="mb-3 border rounded-lg divide-y divide-slate-100">
+            {current.map((r, idx) => {
+              const ing = byId.get(r.ingredientId);
+              return (
+                <li key={r.ingredientId} className="flex items-center gap-2 px-3 py-2">
+                  <span className="flex-1 text-sm text-slate-700">{ing?.name ?? '—'}</span>
+                  <input
+                    type="number"
+                    step="0.001"
+                    value={r.quantity}
+                    onChange={(e) =>
+                      setRows((rs) =>
+                        (rs ?? []).map((x, i) => (i === idx ? { ...x, quantity: Number(e.target.value) } : x)),
+                      )
+                    }
+                    className="w-24 border border-slate-200 rounded-md px-2 py-1 text-sm text-right tabular-nums"
+                  />
+                  <span className="w-8 text-xs text-slate-400">{ing?.unit}</span>
+                  <button
+                    onClick={() => setRows((rs) => (rs ?? []).filter((_, i) => i !== idx))}
+                    className="text-red-500 hover:underline text-xs"
+                  >
+                    ✕
+                  </button>
+                </li>
+              );
+            })}
+            {current.length === 0 && (
+              <li className="px-3 py-2 text-sm text-slate-400">Пока нет ингредиентов</li>
+            )}
+          </ul>
+
+          <div className="text-sm text-slate-600 mb-4">
+            Себестоимость порции: <b className="tabular-nums">{tenge(Math.round(cost))}</b>
+          </div>
+
+          <div className="flex gap-2 items-end mb-1">
+            <div className="flex-1">
+              <Field label="Добавить ингредиент">
+                <Select value={addId} onChange={(e) => setAddId(e.target.value)}>
+                  <option value="">— выбрать —</option>
+                  {available.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name} ({i.unit})
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <div className="w-24">
+              <Field label="Кол-во">
+                <Input
+                  type="number"
+                  step="0.001"
+                  value={addQty}
+                  onChange={(e) => setAddQty(Number(e.target.value))}
+                />
+              </Field>
+            </div>
+            <div className="pb-3">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  if (!addId || addQty <= 0) return;
+                  setRows((rs) => [...(rs ?? []), { ingredientId: addId, quantity: addQty }]);
+                  setAddId('');
+                  setAddQty(0.1);
+                }}
+                disabled={!addId || addQty <= 0}
+              >
+                +
+              </Button>
+            </div>
+          </div>
+
+          {save.error && <ErrorBox error={save.error} />}
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="ghost" onClick={onClose}>
+              Отмена
+            </Button>
+            <Button onClick={() => save.mutate()} disabled={save.isPending || current.length === 0}>
+              {save.isPending ? 'Сохранение…' : 'Сохранить состав'}
+            </Button>
+          </div>
+        </>
+      )}
+    </Modal>
   );
 }
 
